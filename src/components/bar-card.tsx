@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { AppIcon } from "@/components/app-icon";
+import { GoogleMapsLinkIcon } from "@/components/google-maps-link-icon";
 import { Bar, RatingValue } from "@/types/bar";
 
 type BarCardProps = {
@@ -36,7 +37,7 @@ export function BarCard({
       <button className="bar-image-button" onClick={() => onOpenImage(bar)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={bar.imagemUrl} alt={bar.nome} className="bar-image" loading="lazy" />
-        {currentRating === "like" && <span className="card-badge">Must try ★</span>}
+        {currentRating === "like" && <span className="card-badge">Bão dimais ★</span>}
         <span className="image-hint">Ampliar</span>
       </button>
 
@@ -76,16 +77,24 @@ export function BarCard({
               <AppIcon name="share" size={18} />
             </button>
             <button
+              type="button"
               className={`card-icon-btn card-route-btn ${isInRoute ? "card-route-btn-active" : ""}`}
               onClick={() => onToggleRoute(bar.id)}
-              aria-label={isInRoute ? "Remover do roteiro" : "Adicionar ao roteiro"}
+              aria-label={isInRoute ? "Remover do roteiro" : "Colocar no roteiro"}
+              title={isInRoute ? "No roteiro" : "Colocar no roteiro"}
             >
-              {isInRoute ? "No roteiro" : "Roteiro"}
+              <AppIcon name="explore" size={18} />
             </button>
           </div>
-          <a href={bar.mapsUrl} target="_blank" rel="noreferrer" className="maps-cta">
-            <AppIcon name="map" size={15} />
-            Google Maps
+          <a
+            href={bar.mapsUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="maps-cta card-maps-icon-btn"
+            aria-label={`Abrir ${bar.nome} no Google Maps`}
+            title="Abrir no Google Maps"
+          >
+            <GoogleMapsLinkIcon size={22} className="google-maps-link-icon" />
           </a>
         </div>
       </div>

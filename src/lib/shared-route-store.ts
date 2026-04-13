@@ -1,7 +1,9 @@
+import type { RatingValue } from "@/types/bar";
+
 const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL;
 const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-const ROUTE_TTL_SECONDS = 60 * 60 * 24 * 30;
+const ROUTE_TTL_SECONDS = 60 * 60 * 24 * 10;
 const ROUTE_KEY_PREFIX = "route:";
 
 export type SharedRoute = {
@@ -9,6 +11,8 @@ export type SharedRoute = {
   title: string | null;
   barIds: string[];
   createdAt: string;
+  /** Avaliações do autor, só para bares que estão em `barIds`. */
+  ratingsByBarId?: Record<string, RatingValue>;
 };
 
 function getRouteKey(id: string) {
@@ -70,18 +74,61 @@ export async function createSharedRoute(route: SharedRoute) {
 }
 
 export async function getSharedRoute(id: string): Promise<SharedRoute | null> {
-  const response = await runRedisCommand(["GET", getRouteKey(id)]);
+  const routeKey = getRouteKey(id);
+  let serializedRoute: string | null = null;
 
-  if (!response.result || typeof response.result !== "string") {
+  // Tenta leitura já renovando o TTL (sliding expiration).
+  const getAndRefreshResponse = await runRedisCommand(["GETEX", routeKey, "EX", ROUTE_TTL_SECONDS]);
+
+  if (typeof getAndRefreshResponse.result === "string") {
+    serializedRoute = getAndRefreshResponse.result;
+  } else if (getAndRefreshResponse.error) {
+    // Fallback para ambientes Redis sem suporte ao GETEX.
+    const getResponse = await runRedisCommand(["GET", routeKey]);
+    if (typeof getResponse.result !== "string") {
+      return null;
+    }
+    serializedRoute = getResponse.result;
+    await runRedisCommand(["EXPIRE", routeKey, ROUTE_TTL_SECONDS]);
+  } else {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(response.result) as SharedRoute;
-    if (!Array.isArray(parsed.barIds) || typeof parsed.id !== "string") {
+    const parsed = JSON.parse(serializedRoute) as unknown;
+    if (!parsed || typeof parsed !== "object") {
       return null;
     }
-    return parsed;
+    const record = parsed as Record<string, unknown>;
+    if (!Array.isArray(record.barIds) || typeof record.id !== "string") {
+      return null;
+    }
+    const barIds = record.barIds.filter((item): item is string => typeof item === "string");
+    const ratingsRaw = record.ratingsByBarId;
+    let ratingsByBarId: Record<string, RatingValue> | undefined;
+    if (ratingsRaw && typeof ratingsRaw === "object" && !Array.isArray(ratingsRaw)) {
+      const acc: Record<string, RatingValue> = {};
+      for (const [key, val] of Object.entries(ratingsRaw as Record<string, unknown>)) {
+        if (!barIds.includes(key)) continue;
+        if (val === "like" || val === "dislike") {
+          acc[key] = val;
+        }
+      }
+      if (Object.keys(acc).length > 0) {
+        ratingsByBarId = acc;
+      }
+    }
+
+    const title =
+      typeof record.title === "string" ? record.title : record.title === null ? null : null;
+
+    return {
+      id: record.id as string,
+      title,
+      barIds,
+      createdAt: typeof record.createdAt === "string" ? record.createdAt : new Date().toISOString(),
+      ratingsByBarId
+    };
   } catch {
     return null;
   }

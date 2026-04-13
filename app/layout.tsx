@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   title: "Comida di Buteco - BH",
   description: "Lista de bares do Comida di Buteco com mapa e avaliações locais",
   metadataBase: siteUrl ? new URL(siteUrl) : undefined,
+  icons: {
+    icon: "/favicon.ico"
+  },
   openGraph: {
     title: "Comida di Buteco - BH",
     description: "Lista de bares do Comida di Buteco com mapa e avaliações locais",

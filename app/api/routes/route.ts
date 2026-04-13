@@ -6,10 +6,12 @@ import {
   isSharedRouteStoreConfigured,
   type SharedRoute
 } from "@/lib/shared-route-store";
+import type { RatingValue } from "@/types/bar";
 
 type CreateSharedRouteBody = {
   barIds?: unknown;
   title?: unknown;
+  ratingsByBarId?: unknown;
 };
 
 const MAX_TITLE_LENGTH = 80;
@@ -49,6 +51,26 @@ export async function POST(request: Request) {
   }
 
   const title = getValidatedTitle(body.title);
+  if (!title) {
+    return NextResponse.json({ error: "Informe um título para o roteiro." }, { status: 400 });
+  }
+
+  let ratingsByBarId: Record<string, RatingValue> | undefined;
+  const rawRatings = body.ratingsByBarId;
+  if (rawRatings && typeof rawRatings === "object" && !Array.isArray(rawRatings)) {
+    const acc: Record<string, RatingValue> = {};
+    const allowed = new Set(uniqueIds);
+    for (const [key, val] of Object.entries(rawRatings as Record<string, unknown>)) {
+      if (!allowed.has(key)) continue;
+      if (val === "like" || val === "dislike") {
+        acc[key] = val;
+      }
+    }
+    if (Object.keys(acc).length > 0) {
+      ratingsByBarId = acc;
+    }
+  }
+
   let routeId = "";
   let created = false;
 
@@ -58,7 +80,8 @@ export async function POST(request: Request) {
       id: routeId,
       title,
       barIds: uniqueIds,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      ...(ratingsByBarId ? { ratingsByBarId } : {})
     };
     created = await createSharedRoute(route);
     if (created) break;

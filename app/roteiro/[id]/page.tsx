@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { GoogleMapsLinkIcon } from "@/components/google-maps-link-icon";
 import { getBars } from "@/lib/bars";
 import { getSharedRoute, isSharedRouteStoreConfigured } from "@/lib/shared-route-store";
 import { Bar } from "@/types/bar";
@@ -72,6 +73,7 @@ export default async function SharedRoutePage({
 
   const routeBars = sharedRoute.barIds.map((barId) => barsById[barId]).filter((bar): bar is Bar => Boolean(bar));
   const title = sharedRoute.title || buildDefaultTitle(routeBars.length);
+  const ratingsByBarId = sharedRoute.ratingsByBarId;
 
   return (
     <main className="shared-route-root">
@@ -82,24 +84,33 @@ export default async function SharedRoutePage({
       </section>
 
       <section className="shared-route-timeline" aria-label="Paradas do roteiro">
-        {routeBars.map((bar, index) => (
+        {routeBars.map((bar, index) => {
+          const sharedRating = ratingsByBarId?.[bar.id];
+          return (
           <article key={bar.id} className="shared-route-card">
             <p className="shared-route-step">{`Parada ${index + 1}`}</p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={bar.imagemUrl} alt={bar.nome} className="shared-route-image" loading="lazy" />
             <h2>{bar.nome}</h2>
+            {sharedRating ? (
+              <p className={`shared-route-rating-badge shared-route-rating-badge-${sharedRating}`}>
+                {sharedRating === "like" ? "Avaliação do autor: like" : "Avaliação do autor: dislike"}
+              </p>
+            ) : null}
             <p className="shared-route-dish">{bar.petiscoDescricao}</p>
             <p className="shared-route-address">{bar.endereco}</p>
             <div className="shared-route-actions">
-              <Link href={`/bar/${bar.slug}`} className="shared-route-chip">
+              <Link href={`/bar/${bar.slug}?from=${encodeURIComponent(`/roteiro/${id}`)}`} className="shared-route-chip">
                 Ver detalhes
               </Link>
               <a href={bar.mapsUrl} target="_blank" rel="noreferrer" className="shared-route-chip">
+                <GoogleMapsLinkIcon size={16} className="google-maps-link-icon" />
                 Google Maps
               </a>
             </div>
           </article>
-        ))}
+          );
+        })}
       </section>
     </main>
   );

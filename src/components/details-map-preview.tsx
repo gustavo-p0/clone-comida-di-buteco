@@ -2,7 +2,7 @@
 
 import Map, { Marker } from "react-map-gl/maplibre";
 import maplibregl from "maplibre-gl";
-import { AppIcon } from "@/components/app-icon";
+import { GoogleMapsLinkIcon } from "@/components/google-maps-link-icon";
 
 type Props = {
   lat: number;
@@ -27,8 +27,8 @@ export default function DetailsMapPreview({ lat, lng, mapsUrl }: Props) {
       </div>
       <div className="details-map-cta-row">
         <a href={mapsUrl} target="_blank" rel="noreferrer" className="details-map-ver-btn">
-          <AppIcon name="map" size={16} />
-          Ver no Mapa
+          <GoogleMapsLinkIcon size={20} className="google-maps-link-icon" />
+          Ver no Google Maps
         </a>
       </div>
     </div>

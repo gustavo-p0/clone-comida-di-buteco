@@ -9,10 +9,11 @@ type RatingsFilter = "all" | "like" | "dislike";
 type RatingsTabProps = {
   ratings: StoredRating[];
   onShowInMap: (barId: string) => void;
+  onShowInList: (barId: string) => void;
   onShare: (barId: string) => void;
 };
 
-export function RatingsTab({ ratings, onShowInMap, onShare }: RatingsTabProps) {
+export function RatingsTab({ ratings, onShowInMap, onShowInList, onShare }: RatingsTabProps) {
   const [filter, setFilter] = useState<RatingsFilter>("all");
   const filteredRatings = useMemo(
     () => ratings.filter((item) => (filter === "all" ? true : item.rating === filter)),
@@ -41,7 +42,7 @@ export function RatingsTab({ ratings, onShowInMap, onShare }: RatingsTabProps) {
       ) : (
         <ul className="ratings-list">
           {filteredRatings.map((rating) => (
-            <li key={rating.barId} className="rating-item">
+            <li key={rating.barId} id={`rating-${rating.barId}`} className="rating-item">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img className="rating-image" src={rating.imageUrl} alt={rating.barName} loading="lazy" />
               <div className="rating-content">
@@ -52,13 +53,29 @@ export function RatingsTab({ ratings, onShowInMap, onShare }: RatingsTabProps) {
                 <p className="rating-dish">{rating.dishName}</p>
                 <small className="rating-time">{new Date(rating.savedAt).toLocaleString("pt-BR")}</small>
                 <div className="rating-actions">
-                  <button className="rating-map-button" onClick={() => onShowInMap(rating.barId)}>
-                    <AppIcon name="map" size={16} />
-                    <span>Ver no mapa</span>
+                  <button
+                    className="rating-action-btn rating-action-btn-map"
+                    onClick={() => onShowInMap(rating.barId)}
+                    aria-label={`Ver ${rating.barName} no mapa`}
+                    title="Ver no mapa"
+                  >
+                    <AppIcon name="map" size={17} />
                   </button>
-                  <button className="rating-share-button" onClick={() => onShare(rating.barId)}>
-                    <AppIcon name="share" size={16} />
-                    <span>Compartilhar</span>
+                  <button
+                    className="rating-action-btn rating-action-btn-list"
+                    onClick={() => onShowInList(rating.barId)}
+                    aria-label={`Ver ${rating.barName} na lista`}
+                    title="Ver na lista"
+                  >
+                    <AppIcon name="list" size={17} />
+                  </button>
+                  <button
+                    className="rating-action-btn rating-action-btn-share"
+                    onClick={() => onShare(rating.barId)}
+                    aria-label={`Compartilhar ${rating.barName}`}
+                    title="Compartilhar"
+                  >
+                    <AppIcon name="share" size={17} />
                   </button>
                 </div>
               </div>

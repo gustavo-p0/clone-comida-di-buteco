@@ -42,7 +42,7 @@ export function ImageModal({ imageUrl, title, onClose }: ImageModalProps) {
           centerZoomedOut
           doubleClick={{ mode: "toggle" }}
         >
-          <TransformComponent wrapperClass="modal-image-wrap">
+          <TransformComponent wrapperClass="modal-image-wrap" contentClass="modal-image-content">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={imageUrl} alt={title} className="modal-image" />
           </TransformComponent>

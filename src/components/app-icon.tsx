@@ -1,6 +1,7 @@
 type AppIconName =
   | "my-location"
   | "tune"
+  | "close"
   | "chevron-down"
   | "chevron-left"
   | "favorite"
@@ -13,6 +14,7 @@ type AppIconName =
   | "share"
   | "list"
   | "explore"
+  | "visibility"
   | "star";
 
 type AppIconProps = {
@@ -21,10 +23,11 @@ type AppIconProps = {
   className?: string;
 };
 
-const iconPaths: Record<AppIconName, string> = {
+const iconPaths: Record<Exclude<AppIconName, "visibility">, string> = {
   "my-location":
     "M12 2 9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5zM12 10.2a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6Z",
   tune: "M3 17h6v2H3v-2Zm0-6h10v2H3v-2Zm0-6h14v2H3V5Zm12 12h6v2h-6v-2Zm-4-6h10v2H11v-2Zm8-6h2v2h-2V5Z",
+  close: "M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4l-6.3 6.31-1.41-1.42L9.17 12 2.88 5.71 4.29 4.29l6.3 6.3 6.3-6.3z",
   "chevron-down": "M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41Z",
   "chevron-left": "M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z",
   "map-pin":
@@ -50,6 +53,29 @@ const iconPaths: Record<AppIconName, string> = {
 };
 
 export function AppIcon({ name, size = 18, className }: AppIconProps) {
+  if (name === "visibility") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        width={size}
+        height={size}
+        className={className}
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M2.5 12s3.8-6.25 9.5-6.25S21.5 12 21.5 12s-3.8 6.25-9.5 6.25S2.5 12 2.5 12z"
+        />
+        <circle cx="12" cy="12" r="2.75" fill="currentColor" />
+      </svg>
+    );
+  }
+
   return (
     <svg
       viewBox="0 0 24 24"

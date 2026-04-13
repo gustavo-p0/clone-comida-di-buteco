@@ -3,7 +3,9 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AppIcon } from "@/components/app-icon";
+import { GoogleMapsLinkIcon } from "@/components/google-maps-link-icon";
 import { ImageModal } from "@/components/image-modal";
+import { appendBarIdToRouteDraft } from "@/lib/route-draft-storage";
 import { readRatings, saveRatings } from "@/lib/rating-storage";
 import { Bar, RatingValue, StoredRating } from "@/types/bar";
 
@@ -39,6 +41,40 @@ function formatPhone(phone: string): string {
   return phone;
 }
 
+function telHref(phone: string): string {
+  const d = phone.replace(/\D/g, "");
+  return d ? `tel:${d}` : "#";
+}
+
+/** Separa vários telefones no mesmo campo (|, /, ;, quebra de linha, " e ", vírgula entre números). */
+function splitTelephones(raw: string): string[] {
+  const s = raw.trim();
+  if (!s) return [];
+
+  const pass1 = s
+    .split(/\s*(?:\||\n+|\r\n|;\s*|\s+e\s+)\s*/i)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const chunks = pass1.length ? pass1 : [s];
+  const out: string[] = [];
+
+  for (const chunk of chunks) {
+    const slashParts = chunk.split(/\s*\/\s*/).map((x) => x.trim()).filter(Boolean);
+    const toCommaSplit = slashParts.length > 1 ? slashParts : [chunk];
+
+    for (const part of toCommaSplit) {
+      const commaParts = part.split(/,(?=\s*\(?\d)/);
+      for (const p of commaParts) {
+        const t = p.replace(/^\s*\/\s*|\s*\/\s*$/g, "").trim();
+        if (t) out.push(t);
+      }
+    }
+  }
+
+  return out.length ? out : [s];
+}
+
 function parseHorario(horario: string) {
   return horario.split("|").map((entry) => {
     const idx = entry.indexOf(":");
@@ -52,6 +88,14 @@ type BarDetailsClientProps = { bar: Bar };
 export function BarDetailsClient({ bar }: BarDetailsClientProps) {
   const [ratings, setRatings] = useState<StoredRating[]>(() => readRatings());
   const [showImage, setShowImage] = useState(false);
+  const [backHref] = useState(() => {
+    if (typeof window === "undefined") return "/";
+    const rawFrom = new URLSearchParams(window.location.search).get("from");
+    if (!rawFrom || !rawFrom.startsWith("/") || rawFrom.startsWith("//")) {
+      return "/";
+    }
+    return rawFrom;
+  });
   const [isRecommendationLink] = useState(() => {
     if (typeof window === "undefined") return false;
     const rec = new URLSearchParams(window.location.search).get("rec");
@@ -91,13 +135,14 @@ export function BarDetailsClient({ bar }: BarDetailsClientProps) {
     ];
     setRatings(next);
     saveRatings(next);
+    appendBarIdToRouteDraft(bar.id);
   }
 
   return (
     <div className="details-root">
       {/* ── Fixed top bar ─────────────────────────────────── */}
       <header className="details-top-bar">
-        <Link href="/" className="details-back-btn" aria-label="Voltar">
+        <Link href={backHref} className="details-back-btn" aria-label="Voltar">
           <svg viewBox="0 0 24 24" width={22} height={22} fill="currentColor" aria-hidden="true">
             <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
           </svg>
@@ -158,15 +203,25 @@ export function BarDetailsClient({ bar }: BarDetailsClientProps) {
 
         {/* Phone */}
         {bar.telefone ? (
-          <a href={`tel:${bar.telefone}`} className="details-info-block details-info-block-link">
+          <div className="details-info-block">
             <div className="details-info-label">
               <svg viewBox="0 0 24 24" width={14} height={14} fill="currentColor" aria-hidden="true">
                 <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1.02L6.62 10.79z" />
               </svg>
               <span>Telefone</span>
             </div>
-            <p className="details-info-value details-info-phone">{formatPhone(bar.telefone)}</p>
-          </a>
+            <div className="details-phone-list">
+              {splitTelephones(bar.telefone).map((line, i) => (
+                <a
+                  key={i}
+                  href={telHref(line)}
+                  className="details-info-value details-info-phone details-info-phone-link details-info-block-link"
+                >
+                  {formatPhone(line)}
+                </a>
+              ))}
+            </div>
+          </div>
         ) : null}
 
         {/* Hours */}
@@ -212,7 +267,7 @@ export function BarDetailsClient({ bar }: BarDetailsClientProps) {
           rel="noreferrer"
           className="maps-cta details-maps-full"
         >
-          <AppIcon name="map" size={17} />
+          <GoogleMapsLinkIcon size={20} className="google-maps-link-icon" />
           Google Maps
         </a>
       </footer>
