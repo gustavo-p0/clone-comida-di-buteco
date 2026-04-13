@@ -1,3 +1,8 @@
+import {
+  decodeRatingsVector,
+  encodeRatingsVector,
+  ratingsVectorHasScores
+} from "@/lib/shared-route-ratings-codec";
 import type { RatingValue } from "@/types/bar";
 
 const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL;
@@ -5,6 +10,8 @@ const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 const ROUTE_TTL_SECONDS = 60 * 60 * 24 * 10;
 const ROUTE_KEY_PREFIX = "route:";
+const RATE_LIMIT_ROUTE_CREATE_MAX = 20;
+const RATE_LIMIT_ROUTE_CREATE_WINDOW_SEC = 600;
 
 export type SharedRoute = {
   id: string;
@@ -60,11 +67,43 @@ export function generateSharedRouteId() {
   return id;
 }
 
+function sharedRouteToRedisJson(route: SharedRoute): string {
+  const rv = encodeRatingsVector(route.barIds, route.ratingsByBarId);
+  const wire: Record<string, unknown> = {
+    id: route.id,
+    title: route.title,
+    barIds: route.barIds,
+    createdAt: route.createdAt
+  };
+  if (ratingsVectorHasScores(rv)) {
+    wire.rv = rv;
+  }
+  return JSON.stringify(wire);
+}
+
+/** Retorna false se o cliente excedeu o limite de criações na janela. */
+export async function consumeSharedRouteCreationRateLimit(clientKey: string): Promise<boolean> {
+  assertRedisConfigured();
+  const safe = clientKey.replace(/[^\w.-]/g, "_").slice(0, 96) || "unknown";
+  const key = `rl:sr:${safe}`;
+
+  const incrResponse = await runRedisCommand(["INCR", key]);
+  const raw = incrResponse.result;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) {
+    return true;
+  }
+  if (n === 1) {
+    await runRedisCommand(["EXPIRE", key, RATE_LIMIT_ROUTE_CREATE_WINDOW_SEC]);
+  }
+  return n <= RATE_LIMIT_ROUTE_CREATE_MAX;
+}
+
 export async function createSharedRoute(route: SharedRoute) {
   const response = await runRedisCommand([
     "SET",
     getRouteKey(route.id),
-    JSON.stringify(route),
+    sharedRouteToRedisJson(route),
     "EX",
     ROUTE_TTL_SECONDS,
     "NX"
@@ -104,18 +143,26 @@ export async function getSharedRoute(id: string): Promise<SharedRoute | null> {
       return null;
     }
     const barIds = record.barIds.filter((item): item is string => typeof item === "string");
-    const ratingsRaw = record.ratingsByBarId;
     let ratingsByBarId: Record<string, RatingValue> | undefined;
-    if (ratingsRaw && typeof ratingsRaw === "object" && !Array.isArray(ratingsRaw)) {
-      const acc: Record<string, RatingValue> = {};
-      for (const [key, val] of Object.entries(ratingsRaw as Record<string, unknown>)) {
-        if (!barIds.includes(key)) continue;
-        if (val === "like" || val === "dislike") {
-          acc[key] = val;
+
+    const rvRaw = record.rv;
+    if (typeof rvRaw === "string" && rvRaw.length > 0) {
+      ratingsByBarId = decodeRatingsVector(barIds, rvRaw);
+    }
+
+    if (!ratingsByBarId || Object.keys(ratingsByBarId).length === 0) {
+      const ratingsRaw = record.ratingsByBarId;
+      if (ratingsRaw && typeof ratingsRaw === "object" && !Array.isArray(ratingsRaw)) {
+        const acc: Record<string, RatingValue> = {};
+        for (const [key, val] of Object.entries(ratingsRaw as Record<string, unknown>)) {
+          if (!barIds.includes(key)) continue;
+          if (val === "like" || val === "dislike") {
+            acc[key] = val;
+          }
         }
-      }
-      if (Object.keys(acc).length > 0) {
-        ratingsByBarId = acc;
+        if (Object.keys(acc).length > 0) {
+          ratingsByBarId = acc;
+        }
       }
     }
 

@@ -109,10 +109,6 @@ export function MapTab({
   const [isMapReady, setIsMapReady] = useState(false);
   // MapTab unmounts on tab switch, so lazy initializer picks up focusBarId on each mount
   const [selectedBarId, setSelectedBarId] = useState<string | null>(() => focusBarId ?? null);
-  const [detailFrom] = useState(() => {
-    if (typeof window === "undefined") return "/";
-    return `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  });
   const selectedBar = selectedBarId ? (mappableBars.find((b) => b.id === selectedBarId) ?? null) : null;
   const barsGeoJson = useMemo<FeatureCollection<Point>>(
     () => ({
@@ -257,7 +253,7 @@ export function MapTab({
                   <AppIcon name="list" size={17} />
                 </button>
                 <Link
-                  href={`/bar/${selectedBar.slug}?from=${encodeURIComponent(detailFrom)}`}
+                  href={`/bar/${selectedBar.slug}`}
                   className="map-bar-btn"
                   aria-label={`Ver detalhes de ${selectedBar.nome}`}
                   title="Ver detalhes"

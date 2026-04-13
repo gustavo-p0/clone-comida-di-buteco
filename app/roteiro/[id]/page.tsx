@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { GoogleMapsLinkIcon } from "@/components/google-maps-link-icon";
+import { SharedRouteFilterExplorerCta } from "@/components/shared-route-filter-explorer-cta";
 import { getBars } from "@/lib/bars";
 import { getSharedRoute, isSharedRouteStoreConfigured } from "@/lib/shared-route-store";
 import { Bar } from "@/types/bar";
@@ -51,8 +51,8 @@ export default async function SharedRoutePage({
     return (
       <main className="shared-route-root">
         <section className="shared-route-header">
-          <h1>Compartilhamento indisponível</h1>
-          <p>Esse ambiente ainda não está com o Upstash configurado.</p>
+          <h1>Links desativados</h1>
+          <p>Redis (Upstash) não está configurado neste deploy.</p>
           <Link href="/" className="shared-route-primary-btn">
             Voltar para a lista
           </Link>
@@ -99,19 +99,12 @@ export default async function SharedRoutePage({
             ) : null}
             <p className="shared-route-dish">{bar.petiscoDescricao}</p>
             <p className="shared-route-address">{bar.endereco}</p>
-            <div className="shared-route-actions">
-              <Link href={`/bar/${bar.slug}?from=${encodeURIComponent(`/roteiro/${id}`)}`} className="shared-route-chip">
-                Ver detalhes
-              </Link>
-              <a href={bar.mapsUrl} target="_blank" rel="noreferrer" className="shared-route-chip">
-                <GoogleMapsLinkIcon size={16} className="google-maps-link-icon" />
-                Google Maps
-              </a>
-            </div>
           </article>
           );
         })}
       </section>
+
+      <SharedRouteFilterExplorerCta barIds={sharedRoute.barIds} title={sharedRoute.title} />
     </main>
   );
 }

@@ -1,13 +1,16 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppIcon } from "@/components/app-icon";
+import { GoogleMapsLinkIcon } from "@/components/google-maps-link-icon";
 import { BarCard } from "@/components/bar-card";
 import { ImageModal } from "@/components/image-modal";
 import { MapTab } from "@/components/map-tab";
 import { OfficialBrandTab, officialBrandImageSrc } from "@/components/official-brand-tab";
 import { RatingsTab } from "@/components/ratings-tab";
+import { consumeExploreRouteFilterPayload, consumeExplorerOpenTab } from "@/lib/explore-route-filter";
 import { getBars } from "@/lib/bars";
 import { distanceInKm } from "@/lib/distance";
 import { readRatings, saveRatings } from "@/lib/rating-storage";
@@ -65,6 +68,10 @@ export default function HomePage() {
   const copyToastTimeoutRef = useRef<number | null>(null);
   const [copyToastMessage, setCopyToastMessage] = useState<string | null>(null);
   const [routeShareConfigured, setRouteShareConfigured] = useState<boolean | null>(null);
+  const [appliedSharedRouteFilter, setAppliedSharedRouteFilter] = useState<{
+    barIds: string[];
+    title: string | null;
+  } | null>(null);
 
   const resetListFilters = useCallback(() => {
     setSearchQuery("");
@@ -110,22 +117,24 @@ export default function HomePage() {
 
   useEffect(() => {
     const draft = readRouteDraft();
-    const storedRatings = readRatings();
-    const ratedIds = storedRatings.map((item) => item.barId);
-    const seen = new Set(draft.barIds);
-    const mergedBarIds = [...draft.barIds];
-    for (const id of ratedIds) {
-      if (!seen.has(id)) {
-        seen.add(id);
-        mergedBarIds.push(id);
-      }
-    }
     queueMicrotask(() => {
       setRouteTitle(draft.title);
-      setSelectedRouteBarIds(mergedBarIds);
+      setSelectedRouteBarIds(draft.barIds);
       setLastSharedRoute(readLastSharedRoute());
       skipRouteDraftPersistRef.current = false;
     });
+  }, []);
+
+  useEffect(() => {
+    const payload = consumeExploreRouteFilterPayload();
+    const tab = consumeExplorerOpenTab();
+    if (payload) {
+      setAppliedSharedRouteFilter(payload);
+      setVisibleCount(LOAD_STEP);
+    }
+    if (tab === "lista" || tab === "mapa") {
+      setActiveTab(tab);
+    }
   }, []);
 
   useEffect(() => {
@@ -182,7 +191,16 @@ export default function HomePage() {
 
   const filteredBars = useMemo(() => {
     const normalizedQuery = debouncedSearchQuery.trim().toLowerCase();
+    const sharedSet =
+      appliedSharedRouteFilter && appliedSharedRouteFilter.barIds.length > 0
+        ? new Set(appliedSharedRouteFilter.barIds)
+        : null;
+
     const rows = barsWithDistance.filter((row) => {
+      if (sharedSet && !sharedSet.has(row.bar.id)) {
+        return false;
+      }
+
       const isInsideRadius =
         isDistanceFilterActive && userLocation
           ? radiusKm === "all" || (row.distanceKm !== null && row.distanceKm <= radiusKm)
@@ -200,6 +218,27 @@ export default function HomePage() {
       return haystack.includes(normalizedQuery);
     });
 
+    const routeOrder =
+      appliedSharedRouteFilter && appliedSharedRouteFilter.barIds.length > 0
+        ? new Map(appliedSharedRouteFilter.barIds.map((id, index) => [id, index]))
+        : null;
+
+    if (routeOrder) {
+      return [...rows].sort((a, b) => {
+        const ia = routeOrder.get(a.bar.id) ?? 999;
+        const ib = routeOrder.get(b.bar.id) ?? 999;
+        if (ia !== ib) {
+          return ia - ib;
+        }
+        if (sortBy === "distance" && userLocation) {
+          if (a.distanceKm === null) return 1;
+          if (b.distanceKm === null) return -1;
+          return a.distanceKm - b.distanceKm;
+        }
+        return a.bar.nome.localeCompare(b.bar.nome, "pt-BR", { sensitivity: "base" });
+      });
+    }
+
     if (sortBy === "distance" && userLocation) {
       return rows.sort((a, b) => {
         if (a.distanceKm === null) return 1;
@@ -210,6 +249,7 @@ export default function HomePage() {
 
     return rows.sort((a, b) => a.bar.nome.localeCompare(b.bar.nome, "pt-BR", { sensitivity: "base" }));
   }, [
+    appliedSharedRouteFilter,
     barsWithDistance,
     debouncedSearchQuery,
     isDistanceFilterActive,
@@ -246,8 +286,24 @@ export default function HomePage() {
     if (ratingFilter === "unrated") labels.push("Avaliação: Não avaliados");
     labels.push(sortBy === "distance" ? "Ordenação: Distância" : "Ordenação: Nome");
 
+    if (appliedSharedRouteFilter) {
+      labels.push(
+        appliedSharedRouteFilter.title
+          ? `Roteiro partilhado: ${appliedSharedRouteFilter.title}`
+          : "Roteiro partilhado (filtro)"
+      );
+    }
+
     return labels;
-  }, [debouncedSearchQuery, isDistanceFilterActive, radiusKm, ratingFilter, sortBy, userLocation]);
+  }, [
+    appliedSharedRouteFilter,
+    debouncedSearchQuery,
+    isDistanceFilterActive,
+    radiusKm,
+    ratingFilter,
+    sortBy,
+    userLocation
+  ]);
 
   useEffect(() => {
     if (activeTab !== "lista" || !sentinelRef.current) {
@@ -431,7 +487,6 @@ export default function HomePage() {
   }
 
   function handleShowRatedBarInMap(barId: string) {
-    resetListFilters();
     setMapFocusBarId(barId);
     setActiveTab("mapa");
   }
@@ -447,13 +502,6 @@ export default function HomePage() {
       setIsDistanceFilterActive(false);
       setVisibleCount(LOAD_STEP);
     }
-  }
-
-  function handleShowBarInRatings(barId: string) {
-    setActiveTab("avaliacoes");
-    window.setTimeout(() => {
-      document.getElementById(`rating-${barId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 80);
   }
 
   async function handleShareBar(barId: string) {
@@ -594,7 +642,6 @@ export default function HomePage() {
       setVisibleCount(LOAD_STEP);
     }
     if (tab === "mapa") {
-      handleClearAllListFilters();
       setMapFocusBarId(undefined);
       setIsFiltersVisible(true);
     }
@@ -765,6 +812,26 @@ export default function HomePage() {
       </header>
 
       <section className="tab-content">
+        {appliedSharedRouteFilter && (activeTab === "lista" || activeTab === "mapa") ? (
+          <div className="explore-shared-route-banner" role="status">
+            <p className="explore-shared-route-banner-text">
+              {appliedSharedRouteFilter.title
+                ? `A filtrar no Explorer: ${appliedSharedRouteFilter.title}`
+                : "A filtrar no Explorer: roteiro partilhado"}
+            </p>
+            <button
+              type="button"
+              className="explore-shared-route-banner-clear"
+              onClick={() => {
+                setAppliedSharedRouteFilter(null);
+                setVisibleCount(LOAD_STEP);
+              }}
+            >
+              Limpar filtro
+            </button>
+          </div>
+        ) : null}
+
         {activeTab === "lista" &&
           visibleBars.map(({ bar, distanceKm }) => (
             <BarCard
@@ -786,9 +853,23 @@ export default function HomePage() {
           <div className="empty-box list-empty-filters">
             <p>Nenhum bar com os filtros atuais.</p>
             <p className="list-empty-hint">Ajuste a busca, as avaliações ou o raio, ou limpe tudo de uma vez.</p>
-            <button type="button" className="list-empty-clear-btn" onClick={handleClearAllListFilters}>
-              Limpar filtros
-            </button>
+            <div className="list-empty-actions">
+              <button type="button" className="list-empty-clear-btn" onClick={handleClearAllListFilters}>
+                Limpar filtros
+              </button>
+              {appliedSharedRouteFilter ? (
+                <button
+                  type="button"
+                  className="list-empty-clear-btn list-empty-clear-btn-secondary"
+                  onClick={() => {
+                    setAppliedSharedRouteFilter(null);
+                    setVisibleCount(LOAD_STEP);
+                  }}
+                >
+                  Limpar filtro do roteiro
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
@@ -839,154 +920,163 @@ export default function HomePage() {
         {activeTab === "oficial" && <OfficialBrandTab />}
         {activeTab === "roteiro" && (
           <section className="route-tab">
-            <p className="route-draft-note">
-              Rascunho (título e ordem) fica neste aparelho. Para incluir um bar: use no card (Lista ou Mapa) o mesmo
-              ícone da aba <strong>Roteiro</strong> na barra inferior; avalie com like/dislike, ou avalie na página do bar
-              — tudo entra aqui; você pode remover antes de
-              compartilhar. Ao compartilhar o link, as <strong>avaliações</strong> que você deu aos bares do roteiro
-              vão junto (quem abrir o link vê like ou dislike por bar, quando existir).
-            </p>
+            <div className="route-tab-section-block">
+              <h2 className="route-tab-section-title">Sobre o rascunho</h2>
+              <p className="route-draft-note">
+                Rascunho fica neste aparelho. Ícone <strong>Roteiro</strong> nos cards (lista/mapa) adiciona ou tira bares;
+                likes/dislikes entram no link ao compartilhar.
+              </p>
+            </div>
             {lastSharedRoute ? (
-              <div className="route-last-share">
-                <p className="route-last-share-label">Último link que você gerou</p>
-                <p className="route-last-share-immutable-note">
-                  Alterações no rascunho não mudam este URL. Gerou outro compartilhamento? Envie o novo link.
-                </p>
-                <p className="route-last-share-meta">
-                  {lastSharedRoute.title ? `${lastSharedRoute.title} · ` : ""}
-                  {new Date(lastSharedRoute.savedAt).toLocaleString("pt-BR")}
-                </p>
-                <div className="route-last-share-row">
-                  <input readOnly className="route-last-share-input" value={lastSharedRoute.shareUrl} aria-label="URL do roteiro" />
-                  <button type="button" className="route-last-share-copy" onClick={handleCopyLastSharedLink}>
-                    {lastShareLinkCopied ? "Copiado" : "Copiar"}
-                  </button>
+              <div className="route-tab-section-block">
+                <h2 className="route-tab-section-title">Último link gerado</h2>
+                <div className="route-last-share">
+                  <p className="route-last-share-immutable-note">
+                    Rascunho não atualiza URLs antigos — após recompartilhar, mande o link novo.
+                  </p>
+                  <p className="route-last-share-meta">
+                    {lastSharedRoute.title ? `${lastSharedRoute.title} · ` : ""}
+                    {new Date(lastSharedRoute.savedAt).toLocaleString("pt-BR")}
+                  </p>
+                  <div className="route-last-share-row">
+                    <input readOnly className="route-last-share-input" value={lastSharedRoute.shareUrl} aria-label="URL do roteiro" />
+                    <button type="button" className="route-last-share-copy" onClick={handleCopyLastSharedLink}>
+                      {lastShareLinkCopied ? "Copiado" : "Copiar"}
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : null}
-            <section className="route-builder">
-              <p className="route-builder-label">Roteiro compartilhável</p>
-              <input
-                type="text"
-                className="route-builder-input"
-                value={routeTitle}
-                onChange={(event) => setRouteTitle(event.target.value)}
-                placeholder="Título obrigatório para compartilhar"
-                maxLength={80}
-              />
-              <div className="route-builder-row">
-                <span>{`${selectedRouteBarIds.length} bar(es) no roteiro`}</span>
-                <button
-                  type="button"
-                  className="route-builder-share"
-                  disabled={
-                    isCreatingRoute ||
-                    !routeTitle.trim() ||
-                    selectedRouteBarIds.length === 0 ||
-                    routeShareConfigured === false
-                  }
-                  onClick={handleShareRoute}
-                >
-                  {isCreatingRoute ? "Gerando..." : "Compartilhar roteiro"}
-                </button>
-              </div>
-              <p className="route-builder-immutable-hint">
-                Cada compartilhamento gera um <strong>link novo</strong>. Se você mudar bares, ordem ou título no
-                rascunho, isso <strong>não atualiza</strong> páginas já abertas com um link antigo — quem só tem o link
-                velho continua vendo aquela versão. Depois de alterar o roteiro, compartilhe de novo e{" "}
-                <strong>mande sempre o link mais recente</strong> para quem precisar da versão atual.
-              </p>
-              {routeShareConfigured === false ? (
-                <p className="route-builder-share-disabled-hint" role="status">
-                  Compartilhamento indisponível neste ambiente (serviço não configurado). Monte o roteiro localmente ou
-                  configure o Upstash no servidor.
+            <div className="route-tab-section-block">
+              <h2 className="route-tab-section-title">Gerar link</h2>
+              <section className="route-builder">
+                <input
+                  type="text"
+                  className="route-builder-input"
+                  value={routeTitle}
+                  onChange={(event) => setRouteTitle(event.target.value)}
+                  placeholder="Título do roteiro"
+                  maxLength={80}
+                />
+                <div className="route-builder-row">
+                  <span>
+                    {selectedRouteBarIds.length === 1
+                      ? "1 bar no roteiro"
+                      : `${selectedRouteBarIds.length} bares no roteiro`}
+                  </span>
+                  <button
+                    type="button"
+                    className="route-builder-share"
+                    disabled={
+                      isCreatingRoute ||
+                      !routeTitle.trim() ||
+                      selectedRouteBarIds.length === 0 ||
+                      routeShareConfigured === false
+                    }
+                    onClick={handleShareRoute}
+                  >
+                    {isCreatingRoute ? "Gerando..." : "Compartilhar"}
+                  </button>
+                </div>
+                <p className="route-builder-immutable-hint">
+                  Cada envio é um <strong>link fixo</strong> (snapshot). Mudou o roteiro? Gere outro e passe o novo.
                 </p>
-              ) : null}
-              {routeError ? <p className="route-builder-error">{routeError}</p> : null}
-            </section>
+                {routeShareConfigured === false ? (
+                  <p className="route-builder-share-disabled-hint" role="status">
+                    Links desativados: Redis (Upstash) não configurado no servidor.
+                  </p>
+                ) : null}
+                {routeError ? <p className="route-builder-error">{routeError}</p> : null}
+              </section>
+            </div>
 
-            {selectedRouteBars.length > 0 ? (
-              <ul className="route-tab-list">
-                {selectedRouteBars.map((bar, index) => (
-                  <li key={bar.id} className="route-tab-item">
-                    <div className="route-tab-item-top">
-                      <div className="route-tab-item-main">
-                        <span className="route-tab-item-order">{`#${index + 1}`}</span>
-                        <div>
-                          <strong className="route-tab-item-name">{bar.nome}</strong>
-                          <p className="route-tab-item-address">{bar.endereco}</p>
+            <div className="route-tab-section-block">
+              <h2 className="route-tab-section-title">Bares no roteiro</h2>
+              {selectedRouteBars.length > 0 ? (
+                <ul className="route-tab-list">
+                  {selectedRouteBars.map((bar, index) => {
+                    const routeItemRating = ratings.find((r) => r.barId === bar.id)?.rating;
+                    return (
+                      <li key={bar.id} className="route-tab-item">
+                        <div className="route-tab-item-top">
+                          <div className="route-tab-item-main">
+                            <span className="route-tab-item-order">{`#${index + 1}`}</span>
+                            <div>
+                              <strong className="route-tab-item-name">{bar.nome}</strong>
+                              <p className="route-tab-item-address">{bar.endereco}</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="route-tab-item-remove"
+                            onClick={() => handleToggleRouteBar(bar.id)}
+                          >
+                            Remover
+                          </button>
                         </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="route-tab-item-remove"
-                        onClick={() => handleToggleRouteBar(bar.id)}
-                      >
-                        Remover
-                      </button>
-                    </div>
-                    <div className="route-tab-item-bar">
-                      <button
-                        type="button"
-                        className="rating-action-btn rating-action-btn-share"
-                        onClick={() => void handleShareBar(bar.id)}
-                        aria-label={`Compartilhar ${bar.nome}`}
-                        title="Compartilhar"
-                      >
-                        <AppIcon name="share" size={17} />
-                      </button>
-                      <button
-                        type="button"
-                        className="rating-action-btn rating-action-btn-list"
-                        onClick={() => handleShowBarInList(bar.id)}
-                        aria-label={`Ver ${bar.nome} na lista`}
-                        title="Ver na lista"
-                      >
-                        <AppIcon name="list" size={17} />
-                      </button>
-                      <button
-                        type="button"
-                        className="rating-action-btn rating-action-btn-map"
-                        onClick={() => handleShowRatedBarInMap(bar.id)}
-                        aria-label={`Mostrar ${bar.nome} na carta interativa do app`}
-                        title="Carta interativa"
-                      >
-                        <AppIcon name="map" size={17} />
-                      </button>
-                      <button
-                        type="button"
-                        className="rating-action-btn rating-action-btn-star"
-                        onClick={() => handleShowBarInRatings(bar.id)}
-                        aria-label={`Avaliações: ${bar.nome}`}
-                        title="Avaliações"
-                      >
-                        <AppIcon name="star" size={17} />
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="empty-box route-empty-hint">
-                <p>Nenhum bar no roteiro ainda.</p>
-                <p className="route-empty-hint-title">Como adicionar</p>
-                <ul className="route-empty-hint-list">
-                  <li>
-                    <strong>Lista ou Mapa:</strong> no card do bar, toque no ícone de <strong>roteiro</strong> (o mesmo da
-                    aba Roteiro embaixo) — ele fica destacado quando o bar já está no rascunho.
-                  </li>
-                  <li>
-                    <strong>Avaliar:</strong> like ou dislike no card coloca o bar no rascunho automaticamente; na
-                    hora de compartilhar o roteiro, essas <strong>avaliações</strong> seguem no link para os bares em
-                    que você avaliou.
-                  </li>
-                  <li>
-                    <strong>Página do bar:</strong> ao avaliar lá, o bar entra no rascunho da mesma forma e a
-                    avaliação também pode ir no link, como acima.
-                  </li>
+                        <Link href={`/bar/${bar.slug}`} className="card-details-link route-tab-item-details">
+                          Ver detalhes →
+                        </Link>
+                        <div className="card-actions route-tab-item-actions">
+                          <div className="card-actions-left">
+                            <button
+                              type="button"
+                              className={`card-icon-btn ${routeItemRating === "like" ? "active-like" : ""}`}
+                              onClick={() => handleRate(bar, "like")}
+                              aria-label={`Curtir ${bar.nome}`}
+                              title="Curtir"
+                            >
+                              <AppIcon name="favorite" size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              className={`card-icon-btn ${routeItemRating === "dislike" ? "active-dislike" : ""}`}
+                              onClick={() => handleRate(bar, "dislike")}
+                              aria-label={`Não curtir ${bar.nome}`}
+                              title="Não curtir"
+                            >
+                              <AppIcon name="thumb-down" size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              className="card-icon-btn"
+                              onClick={() => void handleShareBar(bar.id)}
+                              aria-label={`Compartilhar ${bar.nome}`}
+                              title="Compartilhar"
+                            >
+                              <AppIcon name="share" size={18} />
+                            </button>
+                          </div>
+                          <a
+                            href={bar.mapsUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="maps-cta card-maps-icon-btn"
+                            aria-label={`Abrir ${bar.nome} no Google Maps`}
+                            title="Google Maps"
+                          >
+                            <GoogleMapsLinkIcon size={22} className="google-maps-link-icon" />
+                          </a>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
-              </div>
-            )}
+              ) : (
+                <div className="empty-box route-empty-hint">
+                  <p>Roteiro vazio.</p>
+                  <p className="route-empty-hint-title">Adicionar bares</p>
+                  <ul className="route-empty-hint-list">
+                    <li>
+                      <strong>Lista / mapa:</strong> ícone <strong>Roteiro</strong> no card (o da barra inferior).
+                    </li>
+                    <li>
+                      <strong>Like/dislike</strong> no card ou na página do bar também entra no rascunho e no link.
+                    </li>
+                  </ul>
+                </div>
+              )}
+            </div>
           </section>
         )}
       </section>

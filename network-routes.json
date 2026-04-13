@@ -1,0 +1,2 @@
+[POST] https://clone-comida-di-buteco.vercel.app/api/routes => [200] 
+  Request body: {"barIds":["1","2"],"title":"Lista de Danilo's"}

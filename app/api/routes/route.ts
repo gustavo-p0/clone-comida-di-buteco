@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBars } from "@/lib/bars";
 import {
+  consumeSharedRouteCreationRateLimit,
   createSharedRoute,
   generateSharedRouteId,
   isSharedRouteStoreConfigured,
@@ -15,6 +16,18 @@ type CreateSharedRouteBody = {
 };
 
 const MAX_TITLE_LENGTH = 80;
+const MAX_BODY_CHARS = 48_000;
+
+function getClientIp(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+  return "unknown";
+}
 
 function getValidatedTitle(value: unknown) {
   if (typeof value !== "string") return null;
@@ -31,14 +44,18 @@ export async function GET() {
 export async function POST(request: Request) {
   if (!isSharedRouteStoreConfigured()) {
     return NextResponse.json(
-      { error: "Compartilhamento indisponível no momento. Configure o Upstash para habilitar esse recurso." },
+      { error: "Compartilhar desativado: configure Redis (Upstash)." },
       { status: 503 }
     );
   }
 
   let body: CreateSharedRouteBody;
   try {
-    body = (await request.json()) as CreateSharedRouteBody;
+    const text = await request.text();
+    if (text.length > MAX_BODY_CHARS) {
+      return NextResponse.json({ error: "Payload demasiado grande." }, { status: 400 });
+    }
+    body = JSON.parse(text) as CreateSharedRouteBody;
   } catch {
     return NextResponse.json({ error: "Payload inválido." }, { status: 400 });
   }
@@ -49,7 +66,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Selecione ao menos 1 bar para compartilhar." }, { status: 400 });
   }
 
-  const validBarIds = new Set(getBars().map((bar) => bar.id));
+  const catalog = getBars();
+  const maxBarsPerRoute = catalog.length;
+  if (uniqueIds.length > maxBarsPerRoute) {
+    return NextResponse.json(
+      { error: `Inclua no máximo ${maxBarsPerRoute} bares neste roteiro.` },
+      { status: 400 }
+    );
+  }
+
+  const allowed = await consumeSharedRouteCreationRateLimit(getClientIp(request));
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Muitas criações de roteiro a partir deste IP. Tente novamente daqui a pouco." },
+      { status: 429 }
+    );
+  }
+
+  const validBarIds = new Set(catalog.map((bar) => bar.id));
   const hasInvalidBarId = uniqueIds.some((id) => !validBarIds.has(id));
   if (hasInvalidBarId) {
     return NextResponse.json({ error: "Lista contém bares inválidos." }, { status: 400 });

@@ -83,8 +83,12 @@ export function BarCard({
               aria-label={isInRoute ? "Remover do roteiro" : "Colocar no roteiro"}
               title={isInRoute ? "Toque para remover do roteiro" : "Toque para colocar no roteiro"}
             >
-              <AppIcon name="explore" size={18} />
-              <span className="card-route-btn-label">{isInRoute ? "No roteiro" : "Fora do roteiro"}</span>
+              {isInRoute ? (
+                <AppIcon name="explore" size={18} />
+              ) : (
+                <AppIcon name="add" size={18} />
+              )}
+              <span className="card-route-btn-label">{isInRoute ? "No roteiro" : "Por no roteiro"}</span>
             </button>
           </div>
           <a

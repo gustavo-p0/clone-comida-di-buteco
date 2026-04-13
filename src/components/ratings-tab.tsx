@@ -54,15 +54,7 @@ export function RatingsTab({ ratings, onShowInMap, onShowInList, onShare }: Rati
                 <small className="rating-time">{new Date(rating.savedAt).toLocaleString("pt-BR")}</small>
                 <div className="rating-actions">
                   <button
-                    className="rating-action-btn rating-action-btn-map"
-                    onClick={() => onShowInMap(rating.barId)}
-                    aria-label={`Mostrar ${rating.barName} na carta interativa do app`}
-                    title="Carta interativa"
-                  >
-                    <AppIcon name="map" size={17} />
-                  </button>
-                  <button
-                    className="rating-action-btn rating-action-btn-list"
+                    className="rating-action-btn"
                     onClick={() => onShowInList(rating.barId)}
                     aria-label={`Ver ${rating.barName} na lista`}
                     title="Ver na lista"
@@ -70,7 +62,15 @@ export function RatingsTab({ ratings, onShowInMap, onShowInList, onShare }: Rati
                     <AppIcon name="list" size={17} />
                   </button>
                   <button
-                    className="rating-action-btn rating-action-btn-share"
+                    className="rating-action-btn"
+                    onClick={() => onShowInMap(rating.barId)}
+                    aria-label={`Mostrar ${rating.barName} na carta interativa do app`}
+                    title="Carta interativa"
+                  >
+                    <AppIcon name="map" size={17} />
+                  </button>
+                  <button
+                    className="rating-action-btn"
                     onClick={() => onShare(rating.barId)}
                     aria-label={`Compartilhar ${rating.barName}`}
                     title="Compartilhar"

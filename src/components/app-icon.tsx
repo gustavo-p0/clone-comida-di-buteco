@@ -1,4 +1,5 @@
 type AppIconName =
+  | "add"
   | "my-location"
   | "tune"
   | "close"
@@ -24,6 +25,7 @@ type AppIconProps = {
 };
 
 const iconPaths: Record<Exclude<AppIconName, "visibility">, string> = {
+  add: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
   "my-location":
     "M12 2 9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5zM12 10.2a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6Z",
   tune: "M3 17h6v2H3v-2Zm0-6h10v2H3v-2Zm0-6h14v2H3V5Zm12 12h6v2h-6v-2Zm-4-6h10v2H11v-2Zm8-6h2v2h-2V5Z",
