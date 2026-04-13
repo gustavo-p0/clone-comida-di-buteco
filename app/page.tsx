@@ -18,29 +18,27 @@ type RadiusOption = 1 | 3 | 5 | 10 | "all";
 const LOAD_STEP = 12;
 const RADIUS_OPTIONS: RadiusOption[] = [1, 3, 5, 10, "all"];
 
-function getInitialAnchorFromHash() {
-  if (typeof window === "undefined") return null;
-  const hash = window.location.hash.replace("#", "");
-  return hash.startsWith("bar-card-") ? hash : null;
-}
-
 export default function HomePage() {
-  const initialAnchorId = getInitialAnchorFromHash();
   const bars = useMemo(() => getBars(), []);
   const [activeTab, setActiveTab] = useState<TabId>("lista");
   const [ratings, setRatings] = useState<StoredRating[]>(() => readRatings());
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
   const [radiusKm, setRadiusKm] = useState<RadiusOption>(5);
-  const [visibleCount, setVisibleCount] = useState(initialAnchorId ? bars.length : LOAD_STEP);
+  const [visibleCount, setVisibleCount] = useState(LOAD_STEP);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isDistanceFilterActive, setIsDistanceFilterActive] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("q") ?? "";
+  });
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("q") ?? "";
+  });
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [selectedImageBar, setSelectedImageBar] = useState<Bar | null>(null);
   const [mapFocusBarId, setMapFocusBarId] = useState<string | undefined>(undefined);
-  const pendingAnchorIdRef = useRef<string | null>(initialAnchorId);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const resetListFilters = useCallback(() => {
@@ -51,13 +49,12 @@ export default function HomePage() {
     setLocationError(null);
   }, []);
 
-  const applyAnchorNavigation = useCallback((anchorId: string) => {
-    pendingAnchorIdRef.current = anchorId;
-    setActiveTab("lista");
-    resetListFilters();
-    setMapFocusBarId(undefined);
-    setVisibleCount(bars.length);
-  }, [bars.length, resetListFilters]);
+  // Clean up ?q= from URL after it's been read into state
+  useEffect(() => {
+    if (window.location.search.includes("q=")) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+    }
+  }, []);
 
   useEffect(() => {
     if (activeTab !== "lista" || !sentinelRef.current) {
@@ -83,27 +80,6 @@ export default function HomePage() {
 
     return () => window.clearTimeout(timeoutId);
   }, [searchQuery]);
-
-  useEffect(() => {
-    function handleHashChange() {
-      const hash = window.location.hash.replace("#", "");
-      if (!hash.startsWith("bar-card-")) return;
-      applyAnchorNavigation(hash);
-    }
-
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, [applyAnchorNavigation]);
-
-  useEffect(() => {
-    const pendingAnchorId = pendingAnchorIdRef.current;
-    if (!pendingAnchorId || activeTab !== "lista") return;
-    const target = document.getElementById(pendingAnchorId);
-    if (!target) return;
-
-    target.scrollIntoView({ block: "start", behavior: "smooth" });
-    pendingAnchorIdRef.current = null;
-  }, [activeTab, visibleCount]);
 
   const barsWithDistance = useMemo(() => {
     if (!userLocation) {
@@ -312,13 +288,22 @@ export default function HomePage() {
   }
 
   function handleShowBarInList(barId: string) {
-    applyAnchorNavigation(`bar-card-${barId}`);
+    const bar = barsById[barId];
+    setActiveTab("lista");
+    setMapFocusBarId(undefined);
+    if (bar) {
+      setSearchQuery(bar.nome);
+      setDebouncedSearchQuery(bar.nome);
+      setRatingFilter("all");
+      setIsDistanceFilterActive(false);
+      setVisibleCount(LOAD_STEP);
+    }
   }
 
-  async function handleShareBarAnchor(barId: string) {
-    const anchorId = `bar-card-${barId}`;
-    const url = `${window.location.origin}${window.location.pathname}#${anchorId}`;
+  async function handleShareBar(barId: string) {
     const bar = barsById[barId];
+    const q = bar ? encodeURIComponent(bar.nome) : "";
+    const url = `${window.location.origin}${window.location.pathname}${q ? `?q=${q}` : ""}`;
     const details = bar
       ? `${bar.nome}\n${bar.petiscoDescricao}\n${bar.endereco}`
       : "Bar do Comida di Buteco BH";
@@ -371,6 +356,35 @@ export default function HomePage() {
   return (
     <main className="app-root">
       <header className="top-header">
+        <div className="header-title-row">
+          <h1 className="app-title">Buteco Explorer</h1>
+        </div>
+
+        <div className="header-controls-row">
+          <button onClick={handleRequestLocation} disabled={isLocating} className="location-cta">
+            <AppIcon name="my-location" size={15} />
+            <span>{isLocating ? "Localizando..." : isDistanceFilterActive ? "Limpar local" : "Usar localização"}</span>
+          </button>
+          <div className="sort-label">
+            <span className="sort-label-top">SORT BY</span>
+            <span className="sort-label-value">
+              Distância <AppIcon name="chevron-down" size={13} />
+            </span>
+          </div>
+        </div>
+
+        <div className="chip-row">
+          {RADIUS_OPTIONS.map((option) => (
+            <button
+              key={option}
+              className={`radius-chip ${radiusKm === option ? "chip-active" : ""}`}
+              onClick={() => handleRadiusChange(option)}
+            >
+              {option === "all" ? "∞" : `${option}km`}
+            </button>
+          ))}
+        </div>
+
         <div className="search-field">
           <input
             type="search"
@@ -382,43 +396,23 @@ export default function HomePage() {
           />
           {searchQuery ? (
             <button type="button" className="search-clear-button" onClick={handleClearSearch} aria-label="Limpar busca">
-              x
+              ×
             </button>
           ) : null}
         </div>
-        <button onClick={handleRequestLocation} disabled={isLocating} className="location-cta">
-          <AppIcon name="my-location" size={16} />
-          <span>{isLocating ? "Localizando..." : isDistanceFilterActive ? "Limpar proximidade" : "Perto de mim"}</span>
-        </button>
-        <div className="radius-header" aria-hidden="true">
-          <span>
-            <AppIcon name="tune" size={15} /> Ordenar por distância
-          </span>
-          <AppIcon name="chevron-down" size={16} />
-        </div>
-        <div className="chip-row">
-          {RADIUS_OPTIONS.map((option) => (
-            <button
-              key={option}
-              className={`radius-chip ${radiusKm === option ? "chip-active" : ""}`}
-              onClick={() => handleRadiusChange(option)}
-            >
-              {option === "all" ? "Sem limite" : `${option}km`}
-            </button>
-          ))}
-        </div>
-        <div className="chip-row">
+
+        <div className="chip-row chip-row-sm">
           <button className={ratingFilter === "all" ? "chip-active" : ""} onClick={() => handleRatingFilterChange("all")}>
             Todos
           </button>
           <button className={ratingFilter === "like" ? "chip-active" : ""} onClick={() => handleRatingFilterChange("like")}>
-            Likes
+            ❤ Likes
           </button>
           <button
             className={ratingFilter === "dislike" ? "chip-active" : ""}
             onClick={() => handleRatingFilterChange("dislike")}
           >
-            Dislikes
+            👎 Dislikes
           </button>
           <button
             className={ratingFilter === "unrated" ? "chip-active" : ""}
@@ -427,6 +421,7 @@ export default function HomePage() {
             Não avaliados
           </button>
         </div>
+
         <p className={`filters-feedback ${locationError ? "filters-feedback-error" : ""}`}>
           {locationError
             ? locationError
@@ -436,9 +431,11 @@ export default function HomePage() {
                 : `${filteredBars.length} bares dentro de ${radiusKm}km de você`
               : `${filteredBars.length} bares encontrados`}
         </p>
-        <p className={`filters-state ${activeFilterLabels.length ? "filters-state-active" : ""}`}>
-          {activeFilterLabels.length ? `Filtros ativos: ${activeFilterLabels.join(" • ")}` : "Sem filtros ativos"}
-        </p>
+        {activeFilterLabels.length > 0 && (
+          <p className="filters-state filters-state-active">
+            {`Filtros: ${activeFilterLabels.join(" • ")}`}
+          </p>
+        )}
       </header>
 
       <section className="tab-content">
@@ -459,14 +456,33 @@ export default function HomePage() {
               currentRating={ratingByBarId[bar.id]}
               onRate={handleRate}
               onOpenImage={setSelectedImageBar}
-              onShare={handleShareBarAnchor}
+              onShare={handleShareBar}
             />
           ))}
 
         {activeTab === "lista" && (
           <>
             <div ref={sentinelRef} />
-            {visibleCount < filteredBars.length && <div className="skeleton">Carregando mais bares...</div>}
+            {visibleCount < filteredBars.length && (
+              <>
+                <div className="skeleton-card" aria-hidden="true">
+                  <div className="skeleton-image" />
+                  <div className="skeleton-body">
+                    <div className="skeleton-line" style={{ width: "65%" }} />
+                    <div className="skeleton-line" style={{ width: "85%" }} />
+                    <div className="skeleton-line" style={{ width: "40%" }} />
+                  </div>
+                </div>
+                <div className="skeleton-card" aria-hidden="true">
+                  <div className="skeleton-image" />
+                  <div className="skeleton-body">
+                    <div className="skeleton-line" style={{ width: "55%" }} />
+                    <div className="skeleton-line" style={{ width: "75%" }} />
+                    <div className="skeleton-line" style={{ width: "35%" }} />
+                  </div>
+                </div>
+              </>
+            )}
           </>
         )}
 
@@ -481,7 +497,7 @@ export default function HomePage() {
           />
         )}
         {activeTab === "avaliacoes" && (
-          <RatingsTab ratings={ratings} onShowInMap={handleShowRatedBarInMap} onShare={handleShareBarAnchor} />
+          <RatingsTab ratings={ratings} onShowInMap={handleShowRatedBarInMap} onShare={handleShareBar} />
         )}
       </section>
 

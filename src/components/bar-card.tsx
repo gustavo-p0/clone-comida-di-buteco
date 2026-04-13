@@ -32,46 +32,51 @@ export function BarCard({
       <button className="bar-image-button" onClick={() => onOpenImage(bar)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={bar.imagemUrl} alt={bar.nome} className="bar-image" loading="lazy" />
+        {currentRating === "like" && <span className="card-badge">Must try ★</span>}
         <span className="image-hint">Ampliar</span>
       </button>
 
-      <Link href={`/bar/${bar.slug}`} className="bar-card-link">
-        <h3>{bar.nome}</h3>
-        <p className="dish-description">{bar.petiscoDescricao}</p>
-      </Link>
+      <div className="card-body">
+        <Link href={`/bar/${bar.slug}`} className="bar-card-link">
+          <h3 className="card-name">{bar.nome}</h3>
+          <p className="card-dish">{bar.petiscoDescricao}</p>
+        </Link>
 
-      <p className="meta-line">{bar.endereco}</p>
-      {hasUserLocation && (
-        <p className="meta-line">
-          {typeof distanceKm === "number" ? `${distanceKm.toFixed(1)} km de você` : "Distância indisponível"}
-        </p>
-      )}
+        {hasUserLocation && (
+          <p className="card-meta">
+            {typeof distanceKm === "number" ? `${distanceKm.toFixed(1)} km de você` : "Distância indisponível"}
+          </p>
+        )}
 
-      <div className="card-actions">
-        <button
-          className={currentRating === "like" ? "active-like" : ""}
-          onClick={() => onRate(bar, "like")}
-          aria-label="Curtir"
-        >
-          <AppIcon name="favorite" size={16} />
-          <span>Like</span>
-        </button>
-        <button
-          className={currentRating === "dislike" ? "active-dislike" : ""}
-          onClick={() => onRate(bar, "dislike")}
-          aria-label="Não curtir"
-        >
-          <AppIcon name="thumb-down" size={16} />
-          <span>Dislike</span>
-        </button>
-        <a href={bar.mapsUrl} target="_blank" rel="noreferrer">
-          <AppIcon name="map" size={16} />
-          <span>Google Maps</span>
-        </a>
-        <button onClick={() => onShare(bar.id)} aria-label="Compartilhar bar">
-          <AppIcon name="share" size={16} />
-          <span>Compartilhar</span>
-        </button>
+        <Link href={`/bar/${bar.slug}`} className="card-details-link">
+          Ver detalhes →
+        </Link>
+
+        <div className="card-actions">
+          <div className="card-actions-left">
+            <button
+              className={`card-icon-btn ${currentRating === "like" ? "active-like" : ""}`}
+              onClick={() => onRate(bar, "like")}
+              aria-label="Curtir"
+            >
+              <AppIcon name="favorite" size={18} />
+            </button>
+            <button
+              className={`card-icon-btn ${currentRating === "dislike" ? "active-dislike" : ""}`}
+              onClick={() => onRate(bar, "dislike")}
+              aria-label="Não curtir"
+            >
+              <AppIcon name="thumb-down" size={18} />
+            </button>
+            <button className="card-icon-btn" onClick={() => onShare(bar.id)} aria-label="Compartilhar bar">
+              <AppIcon name="share" size={18} />
+            </button>
+          </div>
+          <a href={bar.mapsUrl} target="_blank" rel="noreferrer" className="maps-cta">
+            <AppIcon name="map" size={15} />
+            Google Maps
+          </a>
+        </div>
       </div>
     </article>
   );
