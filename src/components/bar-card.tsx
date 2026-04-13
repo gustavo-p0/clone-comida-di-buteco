@@ -13,6 +13,8 @@ type BarCardProps = {
   onRate: (bar: Bar, rating: RatingValue) => void;
   onOpenImage: (bar: Bar) => void;
   onShare: (barId: string) => void;
+  onToggleRoute: (barId: string) => void;
+  isInRoute: boolean;
 };
 
 export function BarCard({
@@ -23,7 +25,9 @@ export function BarCard({
   currentRating,
   onRate,
   onOpenImage,
-  onShare
+  onShare,
+  onToggleRoute,
+  isInRoute
 }: BarCardProps) {
   const hasUserLocation = typeof userLat === "number" && typeof userLng === "number";
 
@@ -70,6 +74,13 @@ export function BarCard({
             </button>
             <button className="card-icon-btn" onClick={() => onShare(bar.id)} aria-label="Compartilhar bar">
               <AppIcon name="share" size={18} />
+            </button>
+            <button
+              className={`card-icon-btn card-route-btn ${isInRoute ? "card-route-btn-active" : ""}`}
+              onClick={() => onToggleRoute(bar.id)}
+              aria-label={isInRoute ? "Remover do roteiro" : "Adicionar ao roteiro"}
+            >
+              {isInRoute ? "No roteiro" : "Roteiro"}
             </button>
           </div>
           <a href={bar.mapsUrl} target="_blank" rel="noreferrer" className="maps-cta">

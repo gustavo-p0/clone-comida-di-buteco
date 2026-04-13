@@ -2,6 +2,7 @@ import withPWAInit from "next-pwa";
 
 const isProd = process.env.NODE_ENV === "production";
 const repoName = "clone-comida-di-buteco";
+const isStaticExport = process.env.NEXT_OUTPUT_EXPORT === "true";
 
 const withPWA = withPWAInit({
   dest: "public",
@@ -12,7 +13,7 @@ const withPWA = withPWAInit({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "export",
+  output: isStaticExport ? "export" : undefined,
   images: {
     unoptimized: true,
     remotePatterns: [
@@ -26,8 +27,8 @@ const nextConfig = {
       }
     ]
   },
-  basePath: isProd ? `/${repoName}` : "",
-  assetPrefix: isProd ? `/${repoName}/` : ""
+  basePath: isProd && isStaticExport ? `/${repoName}` : "",
+  assetPrefix: isProd && isStaticExport ? `/${repoName}/` : ""
 };
 
 export default withPWA(nextConfig);

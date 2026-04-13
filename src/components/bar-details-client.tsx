@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AppIcon } from "@/components/app-icon";
 import { ImageModal } from "@/components/image-modal";
@@ -50,16 +50,13 @@ function parseHorario(horario: string) {
 type BarDetailsClientProps = { bar: Bar };
 
 export function BarDetailsClient({ bar }: BarDetailsClientProps) {
-  const [ratings, setRatings] = useState<StoredRating[]>([]);
+  const [ratings, setRatings] = useState<StoredRating[]>(() => readRatings());
   const [showImage, setShowImage] = useState(false);
-  const [isRecommendationLink, setIsRecommendationLink] = useState(false);
-
-  useEffect(() => {
-    setRatings(readRatings());
-    const params = new URLSearchParams(window.location.search);
-    const rec = params.get("rec");
-    setIsRecommendationLink(rec === "1" || rec === "true" || rec === "recommend");
-  }, []);
+  const [isRecommendationLink] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const rec = new URLSearchParams(window.location.search).get("rec");
+    return rec === "1" || rec === "true" || rec === "recommend";
+  });
 
   const currentRating = useMemo(
     () => ratings.find((item) => item.barId === bar.id)?.rating,
