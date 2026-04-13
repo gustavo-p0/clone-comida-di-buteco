@@ -12,6 +12,7 @@ type BarCardProps = {
   currentRating?: RatingValue;
   onRate: (bar: Bar, rating: RatingValue) => void;
   onOpenImage: (bar: Bar) => void;
+  onShare: (barId: string) => void;
 };
 
 export function BarCard({
@@ -21,7 +22,8 @@ export function BarCard({
   distanceKm,
   currentRating,
   onRate,
-  onOpenImage
+  onOpenImage,
+  onShare
 }: BarCardProps) {
   const hasUserLocation = typeof userLat === "number" && typeof userLng === "number";
 
@@ -66,6 +68,10 @@ export function BarCard({
           <AppIcon name="map" size={16} />
           <span>Google Maps</span>
         </a>
+        <button onClick={() => onShare(bar.id)} aria-label="Compartilhar bar">
+          <AppIcon name="share" size={16} />
+          <span>Compartilhar</span>
+        </button>
       </div>
     </article>
   );

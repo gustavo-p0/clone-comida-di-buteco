@@ -9,6 +9,9 @@ type MapTabProps = {
   bars: Bar[];
   focusBarId?: string;
   userLocation?: { lat: number; lng: number } | null;
+  onShowInList: (barId: string) => void;
+  distanceFilterActive: boolean;
+  radiusKm: 1 | 3 | 5 | 10 | "all";
 };
 
 const BH_VIEW: ViewState = {
@@ -20,7 +23,22 @@ const BH_VIEW: ViewState = {
   padding: { top: 0, right: 0, bottom: 0, left: 0 }
 };
 
-export function MapTab({ bars, focusBarId, userLocation }: MapTabProps) {
+function getZoomByRadius(radiusKm: 1 | 3 | 5 | 10 | "all") {
+  if (radiusKm === 1) return 14.8;
+  if (radiusKm === 3) return 13.9;
+  if (radiusKm === 5) return 13.3;
+  if (radiusKm === 10) return 12.5;
+  return 11.5;
+}
+
+export function MapTab({
+  bars,
+  focusBarId,
+  userLocation,
+  onShowInList,
+  distanceFilterActive,
+  radiusKm
+}: MapTabProps) {
   const mappableBars = useMemo(
     () => bars.filter((bar) => typeof bar.latitude === "number" && typeof bar.longitude === "number"),
     [bars]
@@ -46,10 +64,10 @@ export function MapTab({ bars, focusBarId, userLocation }: MapTabProps) {
     if (!isMapReady || !userLocation || !mapRef.current || selectedBarId) return;
     mapRef.current.flyTo({
       center: [userLocation.lng, userLocation.lat],
-      zoom: 14,
+      zoom: distanceFilterActive ? getZoomByRadius(radiusKm) : 14,
       essential: true
     });
-  }, [isMapReady, selectedBarId, userLocation]);
+  }, [distanceFilterActive, isMapReady, radiusKm, selectedBarId, userLocation]);
 
   return (
     <section className="map-tab">
@@ -77,7 +95,12 @@ export function MapTab({ bars, focusBarId, userLocation }: MapTabProps) {
           </Marker>
         ))}
         {selectedBarId ? (
-          <MapPopup bars={mappableBars} selectedBarId={selectedBarId} onClose={() => setClickedBarId(null)} />
+          <MapPopup
+            bars={mappableBars}
+            selectedBarId={selectedBarId}
+            onClose={() => setClickedBarId(null)}
+            onShowInList={onShowInList}
+          />
         ) : null}
       </Map>
     </section>
@@ -87,11 +110,13 @@ export function MapTab({ bars, focusBarId, userLocation }: MapTabProps) {
 function MapPopup({
   bars,
   selectedBarId,
-  onClose
+  onClose,
+  onShowInList
 }: {
   bars: Bar[];
   selectedBarId: string;
   onClose: () => void;
+  onShowInList: (barId: string) => void;
 }) {
   const selectedBar = bars.find((bar) => bar.id === selectedBarId);
   if (!selectedBar || selectedBar.latitude === null || selectedBar.longitude === null) {
@@ -110,9 +135,14 @@ function MapPopup({
     >
       <strong>{selectedBar.nome}</strong>
       <p>{selectedBar.endereco}</p>
-      <a href={selectedBar.mapsUrl} target="_blank" rel="noreferrer">
-        Abrir no Google Maps
-      </a>
+      <div className="map-popup-actions">
+        <button type="button" onClick={() => onShowInList(selectedBar.id)}>
+          Ver na lista
+        </button>
+        <a href={selectedBar.mapsUrl} target="_blank" rel="noreferrer">
+          Abrir no Google Maps
+        </a>
+      </div>
     </Popup>
   );
 }

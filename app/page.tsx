@@ -43,17 +43,21 @@ export default function HomePage() {
   const pendingAnchorIdRef = useRef<string | null>(initialAnchorId);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const applyAnchorNavigation = useCallback((anchorId: string) => {
-    pendingAnchorIdRef.current = anchorId;
-    setActiveTab("lista");
+  const resetListFilters = useCallback(() => {
     setSearchQuery("");
     setDebouncedSearchQuery("");
     setRatingFilter("all");
     setIsDistanceFilterActive(false);
     setLocationError(null);
+  }, []);
+
+  const applyAnchorNavigation = useCallback((anchorId: string) => {
+    pendingAnchorIdRef.current = anchorId;
+    setActiveTab("lista");
+    resetListFilters();
     setMapFocusBarId(undefined);
     setVisibleCount(bars.length);
-  }, [bars.length]);
+  }, [bars.length, resetListFilters]);
 
   useEffect(() => {
     if (activeTab !== "lista" || !sentinelRef.current) {
@@ -97,7 +101,7 @@ export default function HomePage() {
     const target = document.getElementById(pendingAnchorId);
     if (!target) return;
 
-    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    target.scrollIntoView({ block: "start", behavior: "smooth" });
     pendingAnchorIdRef.current = null;
   }, [activeTab, visibleCount]);
 
@@ -117,6 +121,13 @@ export default function HomePage() {
       };
     });
   }, [bars, userLocation]);
+
+  const barsById = useMemo(() => {
+    return bars.reduce<Record<string, Bar>>((accumulator, bar) => {
+      accumulator[bar.id] = bar;
+      return accumulator;
+    }, {});
+  }, [bars]);
 
   const ratingByBarId = useMemo(() => {
     return ratings.reduce<Record<string, RatingValue>>((accumulator, item) => {
@@ -295,19 +306,29 @@ export default function HomePage() {
   }
 
   function handleShowRatedBarInMap(barId: string) {
+    resetListFilters();
     setMapFocusBarId(barId);
     setActiveTab("mapa");
+  }
+
+  function handleShowBarInList(barId: string) {
+    applyAnchorNavigation(`bar-card-${barId}`);
   }
 
   async function handleShareBarAnchor(barId: string) {
     const anchorId = `bar-card-${barId}`;
     const url = `${window.location.origin}${window.location.pathname}#${anchorId}`;
+    const bar = barsById[barId];
+    const details = bar
+      ? `${bar.nome}\n${bar.petiscoDescricao}\n${bar.endereco}`
+      : "Bar do Comida di Buteco BH";
+    const shareText = `Olha esse bar no Comida di Buteco BH:\n\n${details}`;
 
     try {
       if (navigator.share) {
         await navigator.share({
-          title: "Comida di Buteco BH",
-          text: "Olha esse bar no app do Comida di Buteco:",
+          title: bar ? `${bar.nome} • Comida di Buteco BH` : "Comida di Buteco BH",
+          text: shareText,
           url
         });
         return;
@@ -317,10 +338,10 @@ export default function HomePage() {
     }
 
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(`${shareText}\n\n${url}`);
       window.alert("Link copiado para a área de transferência.");
     } catch {
-      window.prompt("Copie o link do card:", url);
+      window.prompt("Copie os detalhes e o link do card:", `${shareText}\n\n${url}`);
     }
   }
 
@@ -406,7 +427,7 @@ export default function HomePage() {
             Não avaliados
           </button>
         </div>
-        <p className="filters-feedback">
+        <p className={`filters-feedback ${locationError ? "filters-feedback-error" : ""}`}>
           {locationError
             ? locationError
             : isDistanceFilterActive && userLocation
@@ -438,6 +459,7 @@ export default function HomePage() {
               currentRating={ratingByBarId[bar.id]}
               onRate={handleRate}
               onOpenImage={setSelectedImageBar}
+              onShare={handleShareBarAnchor}
             />
           ))}
 
@@ -453,6 +475,9 @@ export default function HomePage() {
             bars={isDistanceFilterActive && userLocation ? barsForMap : bars}
             focusBarId={mapFocusBarId}
             userLocation={userLocation}
+            onShowInList={handleShowBarInList}
+            distanceFilterActive={isDistanceFilterActive}
+            radiusKm={radiusKm}
           />
         )}
         {activeTab === "avaliacoes" && (
