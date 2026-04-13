@@ -24,17 +24,12 @@ export default function HomePage() {
   const [ratings, setRatings] = useState<StoredRating[]>(() => readRatings());
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
   const [radiusKm, setRadiusKm] = useState<RadiusOption>(5);
+  const [isFiltersVisible, setIsFiltersVisible] = useState(true);
   const [visibleCount, setVisibleCount] = useState(LOAD_STEP);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isDistanceFilterActive, setIsDistanceFilterActive] = useState(false);
-  const [searchQuery, setSearchQuery] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return new URLSearchParams(window.location.search).get("q") ?? "";
-  });
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return new URLSearchParams(window.location.search).get("q") ?? "";
-  });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [selectedImageBar, setSelectedImageBar] = useState<Bar | null>(null);
@@ -49,9 +44,13 @@ export default function HomePage() {
     setLocationError(null);
   }, []);
 
-  // Clean up ?q= from URL after it's been read into state
+  // Read ?q= from URL on mount, then clean it up
   useEffect(() => {
-    if (window.location.search.includes("q=")) {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q") ?? "";
+    if (q) {
+      setSearchQuery(q);
+      setDebouncedSearchQuery(q);
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
     }
   }, []);
@@ -302,8 +301,8 @@ export default function HomePage() {
 
   async function handleShareBar(barId: string) {
     const bar = barsById[barId];
-    const q = bar ? encodeURIComponent(bar.nome) : "";
-    const url = `${window.location.origin}${window.location.pathname}${q ? `?q=${q}` : ""}`;
+    const detailsPath = bar ? `/bar/${bar.slug}?rec=1` : window.location.pathname;
+    const url = `${window.location.origin}${detailsPath}`;
     const details = bar
       ? `${bar.nome}\n${bar.petiscoDescricao}\n${bar.endereco}`
       : "Bar do Comida di Buteco BH";
@@ -354,73 +353,84 @@ export default function HomePage() {
   }
 
   return (
-    <main className="app-root">
+    <main className={`app-root${activeTab === "mapa" ? " app-root-map" : ""}`}>
       <header className="top-header">
         <div className="header-title-row">
           <h1 className="app-title">Buteco Explorer</h1>
-        </div>
-
-        <div className="header-controls-row">
-          <button onClick={handleRequestLocation} disabled={isLocating} className="location-cta">
-            <AppIcon name="my-location" size={15} />
-            <span>{isLocating ? "Localizando..." : isDistanceFilterActive ? "Limpar local" : "Usar localização"}</span>
-          </button>
-          <div className="sort-label">
-            <span className="sort-label-top">SORT BY</span>
-            <span className="sort-label-value">
-              Distância <AppIcon name="chevron-down" size={13} />
-            </span>
-          </div>
-        </div>
-
-        <div className="chip-row">
-          {RADIUS_OPTIONS.map((option) => (
-            <button
-              key={option}
-              className={`radius-chip ${radiusKm === option ? "chip-active" : ""}`}
-              onClick={() => handleRadiusChange(option)}
-            >
-              {option === "all" ? "∞" : `${option}km`}
-            </button>
-          ))}
-        </div>
-
-        <div className="search-field">
-          <input
-            type="search"
-            className="search-input"
-            placeholder="Buscar bar, prato ou endereço"
-            value={searchQuery}
-            onChange={(event) => handleSearchChange(event.target.value)}
-            aria-label="Buscar bares"
-          />
-          {searchQuery ? (
-            <button type="button" className="search-clear-button" onClick={handleClearSearch} aria-label="Limpar busca">
-              ×
-            </button>
-          ) : null}
-        </div>
-
-        <div className="chip-row chip-row-sm">
-          <button className={ratingFilter === "all" ? "chip-active" : ""} onClick={() => handleRatingFilterChange("all")}>
-            Todos
-          </button>
-          <button className={ratingFilter === "like" ? "chip-active" : ""} onClick={() => handleRatingFilterChange("like")}>
-            ❤ Likes
-          </button>
           <button
-            className={ratingFilter === "dislike" ? "chip-active" : ""}
-            onClick={() => handleRatingFilterChange("dislike")}
+            type="button"
+            className="toggle-filters-button"
+            onClick={() => setIsFiltersVisible((current) => !current)}
           >
-            👎 Dislikes
-          </button>
-          <button
-            className={ratingFilter === "unrated" ? "chip-active" : ""}
-            onClick={() => handleRatingFilterChange("unrated")}
-          >
-            Não avaliados
+            {isFiltersVisible ? "Ocultar filtros" : "Mostrar filtros"}
           </button>
         </div>
+
+        {isFiltersVisible && (
+          <>
+            <div className="header-controls-row">
+              <button onClick={handleRequestLocation} disabled={isLocating} className="location-cta">
+                <AppIcon name="my-location" size={15} />
+                <span>{isLocating ? "Localizando..." : isDistanceFilterActive ? "Limpar local" : "Usar localização"}</span>
+              </button>
+              <div className="sort-label">
+                <span className="sort-label-top">SORT BY</span>
+                <span className="sort-label-value">
+                  Distância <AppIcon name="chevron-down" size={13} />
+                </span>
+              </div>
+            </div>
+
+            <div className="chip-row">
+              {RADIUS_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  className={`radius-chip ${radiusKm === option ? "chip-active" : ""}`}
+                  onClick={() => handleRadiusChange(option)}
+                >
+                  {option === "all" ? "10km+" : `${option}km`}
+                </button>
+              ))}
+            </div>
+
+            <div className="search-field">
+              <input
+                type="search"
+                className="search-input"
+                placeholder="Buscar bar, prato ou endereço"
+                value={searchQuery}
+                onChange={(event) => handleSearchChange(event.target.value)}
+                aria-label="Buscar bares"
+              />
+              {searchQuery ? (
+                <button type="button" className="search-clear-button" onClick={handleClearSearch} aria-label="Limpar busca">
+                  ×
+                </button>
+              ) : null}
+            </div>
+
+            <div className="chip-row chip-row-sm">
+              <button className={ratingFilter === "all" ? "chip-active" : ""} onClick={() => handleRatingFilterChange("all")}>
+                Todos
+              </button>
+              <button className={ratingFilter === "like" ? "chip-active" : ""} onClick={() => handleRatingFilterChange("like")}>
+                ❤ Likes
+              </button>
+              <button
+                className={ratingFilter === "dislike" ? "chip-active" : ""}
+                onClick={() => handleRatingFilterChange("dislike")}
+              >
+                👎 Dislikes
+              </button>
+              <button
+                className={ratingFilter === "unrated" ? "chip-active" : ""}
+                onClick={() => handleRatingFilterChange("unrated")}
+              >
+                Não avaliados
+              </button>
+            </div>
+          </>
+        )}
 
         <p className={`filters-feedback ${locationError ? "filters-feedback-error" : ""}`}>
           {locationError

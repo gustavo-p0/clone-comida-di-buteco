@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AppIcon } from "@/components/app-icon";
 import { ImageModal } from "@/components/image-modal";
@@ -50,12 +49,17 @@ function parseHorario(horario: string) {
 
 type BarDetailsClientProps = { bar: Bar };
 
-function BarDetailsInner({ bar }: BarDetailsClientProps) {
-  const searchParams = useSearchParams();
-  const rec = searchParams.get("rec");
-  const isRecommendationLink = rec === "1" || rec === "true" || rec === "recommend";
-  const [ratings, setRatings] = useState<StoredRating[]>(() => readRatings());
+export function BarDetailsClient({ bar }: BarDetailsClientProps) {
+  const [ratings, setRatings] = useState<StoredRating[]>([]);
   const [showImage, setShowImage] = useState(false);
+  const [isRecommendationLink, setIsRecommendationLink] = useState(false);
+
+  useEffect(() => {
+    setRatings(readRatings());
+    const params = new URLSearchParams(window.location.search);
+    const rec = params.get("rec");
+    setIsRecommendationLink(rec === "1" || rec === "true" || rec === "recommend");
+  }, []);
 
   const currentRating = useMemo(
     () => ratings.find((item) => item.barId === bar.id)?.rating,
@@ -189,16 +193,6 @@ function BarDetailsInner({ bar }: BarDetailsClientProps) {
         ) : null}
       </div>
 
-      {/* ── Map CTA ───────────────────────────────────────── */}
-      <div className="details-map-block">
-        <div className="details-map-cta-row">
-          <a href={bar.mapsUrl} target="_blank" rel="noreferrer" className="details-map-ver-btn">
-            <AppIcon name="map" size={17} />
-            Ver no Mapa
-          </a>
-        </div>
-      </div>
-
       {/* ── Fixed bottom actions ──────────────────────────── */}
       <footer className="details-actions">
         <button
@@ -233,10 +227,3 @@ function BarDetailsInner({ bar }: BarDetailsClientProps) {
   );
 }
 
-export function BarDetailsClient(props: BarDetailsClientProps) {
-  return (
-    <Suspense fallback={null}>
-      <BarDetailsInner {...props} />
-    </Suspense>
-  );
-}

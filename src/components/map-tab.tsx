@@ -69,6 +69,15 @@ export function MapTab({
     });
   }, [distanceFilterActive, isMapReady, radiusKm, selectedBarId, userLocation]);
 
+  function resetView() {
+    setSelectedBarId(null);
+    mapRef.current?.flyTo({
+      center: [BH_VIEW.longitude, BH_VIEW.latitude],
+      zoom: BH_VIEW.zoom,
+      essential: true
+    });
+  }
+
   return (
     <section className="map-tab">
       <Map
@@ -95,6 +104,10 @@ export function MapTab({
           </Marker>
         ))}
       </Map>
+
+      <button className="map-reset-btn" onClick={resetView} aria-label="Visão geral de BH" title="Visão geral de BH">
+        <AppIcon name="explore" size={18} />
+      </button>
 
       {selectedBar ? (
         <div className="map-bar-card">
