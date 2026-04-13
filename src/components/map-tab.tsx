@@ -252,17 +252,17 @@ export function MapTab({
                   onClick={() => onShowInList(selectedBar.id)}
                   className="map-bar-btn"
                   aria-label={`Ver ${selectedBar.nome} na lista`}
+                  title="Ver na lista"
                 >
-                  <AppIcon name="list" size={15} />
-                  Ver na lista
+                  <AppIcon name="list" size={17} />
                 </button>
                 <Link
                   href={`/bar/${selectedBar.slug}?from=${encodeURIComponent(detailFrom)}`}
                   className="map-bar-btn"
                   aria-label={`Ver detalhes de ${selectedBar.nome}`}
+                  title="Ver detalhes"
                 >
-                  <AppIcon name="visibility" size={15} />
-                  Ver detalhes
+                  <AppIcon name="visibility" size={17} />
                 </Link>
                 <a
                   href={selectedBar.mapsUrl}
@@ -270,9 +270,9 @@ export function MapTab({
                   rel="noreferrer"
                   className="map-bar-btn map-bar-btn-maps"
                   aria-label={`Abrir ${selectedBar.nome} no Google Maps`}
+                  title="Google Maps"
                 >
                   <GoogleMapsLinkIcon size={18} className="google-maps-link-icon" />
-                  Google Maps
                 </a>
               </div>
             </div>

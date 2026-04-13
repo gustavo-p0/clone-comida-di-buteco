@@ -81,9 +81,10 @@ export function BarCard({
               className={`card-icon-btn card-route-btn ${isInRoute ? "card-route-btn-active" : ""}`}
               onClick={() => onToggleRoute(bar.id)}
               aria-label={isInRoute ? "Remover do roteiro" : "Colocar no roteiro"}
-              title={isInRoute ? "No roteiro" : "Colocar no roteiro"}
+              title={isInRoute ? "Toque para remover do roteiro" : "Toque para colocar no roteiro"}
             >
               <AppIcon name="explore" size={18} />
+              <span className="card-route-btn-label">{isInRoute ? "No roteiro" : "Fora do roteiro"}</span>
             </button>
           </div>
           <a

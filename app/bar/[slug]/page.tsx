@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { BarDetailsClient } from "@/components/bar-details-client";
 import { getBarBySlug, getBars } from "@/lib/bars";
 
@@ -62,5 +63,9 @@ export default async function BarDetailsPage({
     notFound();
   }
 
-  return <BarDetailsClient bar={bar} />;
+  return (
+    <Suspense fallback={null}>
+      <BarDetailsClient bar={bar} />
+    </Suspense>
+  );
 }

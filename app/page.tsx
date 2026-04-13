@@ -593,6 +593,11 @@ export default function HomePage() {
     if (tab === "lista") {
       setVisibleCount(LOAD_STEP);
     }
+    if (tab === "mapa") {
+      handleClearAllListFilters();
+      setMapFocusBarId(undefined);
+      setIsFiltersVisible(true);
+    }
   }
 
   function handleSearchChange(value: string) {
@@ -631,7 +636,7 @@ export default function HomePage() {
               aria-label={isFiltersVisible ? "Ocultar filtros" : "Mostrar filtros"}
               title={isFiltersVisible ? "Ocultar filtros" : "Mostrar filtros"}
             >
-              <AppIcon name={isFiltersVisible ? "close" : "tune"} size={16} />
+              <AppIcon name={isFiltersVisible ? "close" : "tune"} size={20} />
             </button>
           ) : null}
         </div>

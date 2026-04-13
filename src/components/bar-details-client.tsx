@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AppIcon } from "@/components/app-icon";
 import { GoogleMapsLinkIcon } from "@/components/google-maps-link-icon";
 import { ImageModal } from "@/components/image-modal";
@@ -86,26 +87,37 @@ function parseHorario(horario: string) {
 type BarDetailsClientProps = { bar: Bar };
 
 function isReturnToSharedRoteiro(path: string): boolean {
-  return /^\/roteiro\/[^/]+$/.test(path);
+  let p = path.trim();
+  try {
+    for (let i = 0; i < 2 && p.includes("%"); i += 1) {
+      p = decodeURIComponent(p);
+    }
+  } catch {
+    /* keep p */
+  }
+  return /^\/roteiro\/[^/?#]+$/.test(p);
 }
 
 export function BarDetailsClient({ bar }: BarDetailsClientProps) {
+  const searchParams = useSearchParams();
   const [ratings, setRatings] = useState<StoredRating[]>(() => readRatings());
   const [showImage, setShowImage] = useState(false);
-  const [backHref] = useState(() => {
-    if (typeof window === "undefined") return "/";
-    const rawFrom = new URLSearchParams(window.location.search).get("from");
-    if (!rawFrom || !rawFrom.startsWith("/") || rawFrom.startsWith("//")) {
+
+  const fromRaw = searchParams.get("from");
+  const backHref = useMemo(() => {
+    if (!fromRaw || !fromRaw.startsWith("/") || fromRaw.startsWith("//")) {
       return "/";
     }
-    return rawFrom;
-  });
-  const returnToRoteiro = isReturnToSharedRoteiro(backHref);
-  const [isRecommendationLink] = useState(() => {
-    if (typeof window === "undefined") return false;
-    const rec = new URLSearchParams(window.location.search).get("rec");
-    return rec === "1" || rec === "true" || rec === "recommend";
-  });
+    return fromRaw;
+  }, [fromRaw]);
+
+  const returnToRoteiro = useMemo(() => isReturnToSharedRoteiro(backHref), [backHref]);
+
+  const recRaw = searchParams.get("rec");
+  const isRecommendationLink = useMemo(
+    () => recRaw === "1" || recRaw === "true" || recRaw === "recommend",
+    [recRaw]
+  );
 
   const currentRating = useMemo(
     () => ratings.find((item) => item.barId === bar.id)?.rating,
@@ -144,30 +156,30 @@ export function BarDetailsClient({ bar }: BarDetailsClientProps) {
   }
 
   return (
-    <div className="details-root">
-      {/* ── Fixed top bar ─────────────────────────────────── */}
-      <header className="details-top-bar">
-        <Link
-          href={backHref}
-          className="details-back-btn"
-          aria-label={returnToRoteiro ? "Voltar ao roteiro" : "Voltar"}
-        >
-          <svg viewBox="0 0 24 24" width={22} height={22} fill="currentColor" aria-hidden="true">
-            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-          </svg>
-        </Link>
-        <span className="details-top-title">{bar.nome}</span>
-        <div className="details-top-spacer" aria-hidden="true" />
-      </header>
-
-      {returnToRoteiro ? (
-        <div className="details-route-return-strip">
-          <Link href={backHref} className="details-route-return-link">
-            <AppIcon name="explore" size={18} />
-            <span>Voltar ao roteiro</span>
+    <div className={`details-root${returnToRoteiro ? " details-root--route-return" : ""}`}>
+      <div className={`details-top-sticky${returnToRoteiro ? " details-top-sticky--route-return" : ""}`}>
+        <header className="details-top-bar">
+          <Link
+            href={backHref}
+            className="details-back-btn"
+            aria-label={returnToRoteiro ? "Voltar ao roteiro" : "Voltar"}
+          >
+            <svg viewBox="0 0 24 24" width={22} height={22} fill="currentColor" aria-hidden="true">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            </svg>
           </Link>
-        </div>
-      ) : null}
+          <span className="details-top-title">{bar.nome}</span>
+          <div className="details-top-spacer" aria-hidden="true" />
+        </header>
+        {returnToRoteiro ? (
+          <div className="details-route-return-inner">
+            <Link href={backHref} className="details-route-return-link">
+              <AppIcon name="explore" size={20} />
+              <span>Voltar ao roteiro</span>
+            </Link>
+          </div>
+        ) : null}
+      </div>
 
       {/* ── Hero image ────────────────────────────────────── */}
       <div className="details-hero">
