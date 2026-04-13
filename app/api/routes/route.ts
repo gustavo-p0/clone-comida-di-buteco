@@ -23,6 +23,11 @@ function getValidatedTitle(value: unknown) {
   return normalized.slice(0, MAX_TITLE_LENGTH);
 }
 
+/** Estado do backend de compartilhamento (sem chamar Redis). */
+export async function GET() {
+  return NextResponse.json({ shareEnabled: isSharedRouteStoreConfigured() });
+}
+
 export async function POST(request: Request) {
   if (!isSharedRouteStoreConfigured()) {
     return NextResponse.json(

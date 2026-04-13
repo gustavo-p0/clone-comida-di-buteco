@@ -85,6 +85,10 @@ function parseHorario(horario: string) {
 
 type BarDetailsClientProps = { bar: Bar };
 
+function isReturnToSharedRoteiro(path: string): boolean {
+  return /^\/roteiro\/[^/]+$/.test(path);
+}
+
 export function BarDetailsClient({ bar }: BarDetailsClientProps) {
   const [ratings, setRatings] = useState<StoredRating[]>(() => readRatings());
   const [showImage, setShowImage] = useState(false);
@@ -96,6 +100,7 @@ export function BarDetailsClient({ bar }: BarDetailsClientProps) {
     }
     return rawFrom;
   });
+  const returnToRoteiro = isReturnToSharedRoteiro(backHref);
   const [isRecommendationLink] = useState(() => {
     if (typeof window === "undefined") return false;
     const rec = new URLSearchParams(window.location.search).get("rec");
@@ -142,7 +147,11 @@ export function BarDetailsClient({ bar }: BarDetailsClientProps) {
     <div className="details-root">
       {/* ── Fixed top bar ─────────────────────────────────── */}
       <header className="details-top-bar">
-        <Link href={backHref} className="details-back-btn" aria-label="Voltar">
+        <Link
+          href={backHref}
+          className="details-back-btn"
+          aria-label={returnToRoteiro ? "Voltar ao roteiro" : "Voltar"}
+        >
           <svg viewBox="0 0 24 24" width={22} height={22} fill="currentColor" aria-hidden="true">
             <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
           </svg>
@@ -150,6 +159,15 @@ export function BarDetailsClient({ bar }: BarDetailsClientProps) {
         <span className="details-top-title">{bar.nome}</span>
         <div className="details-top-spacer" aria-hidden="true" />
       </header>
+
+      {returnToRoteiro ? (
+        <div className="details-route-return-strip">
+          <Link href={backHref} className="details-route-return-link">
+            <AppIcon name="explore" size={18} />
+            <span>Voltar ao roteiro</span>
+          </Link>
+        </div>
+      ) : null}
 
       {/* ── Hero image ────────────────────────────────────── */}
       <div className="details-hero">

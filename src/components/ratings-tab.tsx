@@ -56,8 +56,8 @@ export function RatingsTab({ ratings, onShowInMap, onShowInList, onShare }: Rati
                   <button
                     className="rating-action-btn rating-action-btn-map"
                     onClick={() => onShowInMap(rating.barId)}
-                    aria-label={`Ver ${rating.barName} no mapa`}
-                    title="Ver no mapa"
+                    aria-label={`Mostrar ${rating.barName} na carta interativa do app`}
+                    title="Carta interativa"
                   >
                     <AppIcon name="map" size={17} />
                   </button>

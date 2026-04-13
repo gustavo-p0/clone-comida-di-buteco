@@ -62,6 +62,9 @@ export default function HomePage() {
   const [lastShareLinkCopied, setLastShareLinkCopied] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const skipRouteDraftPersistRef = useRef(true);
+  const copyToastTimeoutRef = useRef<number | null>(null);
+  const [copyToastMessage, setCopyToastMessage] = useState<string | null>(null);
+  const [routeShareConfigured, setRouteShareConfigured] = useState<boolean | null>(null);
 
   const resetListFilters = useCallback(() => {
     setSearchQuery("");
@@ -72,29 +75,30 @@ export default function HomePage() {
     setCanRetryLocation(false);
   }, []);
 
+  const showCopyToast = useCallback((message: string) => {
+    if (copyToastTimeoutRef.current) {
+      window.clearTimeout(copyToastTimeoutRef.current);
+    }
+    setCopyToastMessage(message);
+    copyToastTimeoutRef.current = window.setTimeout(() => {
+      setCopyToastMessage(null);
+      copyToastTimeoutRef.current = null;
+    }, 2800);
+  }, []);
+
+  const handleClearAllListFilters = useCallback(() => {
+    resetListFilters();
+    setRadiusKm(5);
+    setSortBy("name");
+    setVisibleCount(LOAD_STEP);
+  }, [resetListFilters]);
+
   // Clean up ?q= after the state initializers consume it.
   useEffect(() => {
     if (window.location.search.includes("q=")) {
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
     }
   }, []);
-
-  useEffect(() => {
-    if (activeTab !== "lista" || !sentinelRef.current) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisibleCount((current) => current + LOAD_STEP);
-        }
-      },
-      { rootMargin: "250px" }
-    );
-    observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
-  }, [activeTab]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -245,6 +249,48 @@ export default function HomePage() {
     return labels;
   }, [debouncedSearchQuery, isDistanceFilterActive, radiusKm, ratingFilter, sortBy, userLocation]);
 
+  useEffect(() => {
+    if (activeTab !== "lista" || !sentinelRef.current) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) {
+          return;
+        }
+        setVisibleCount((current) => {
+          if (filteredBars.length === 0) {
+            return current;
+          }
+          return current + LOAD_STEP;
+        });
+      },
+      { rootMargin: "250px" }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [activeTab, filteredBars.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/routes")
+      .then((res) => (res.ok ? res.json() : Promise.resolve({ shareEnabled: false })))
+      .then((data: { shareEnabled?: boolean }) => {
+        if (!cancelled) {
+          setRouteShareConfigured(Boolean(data.shareEnabled));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRouteShareConfigured(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function handleRate(bar: Bar, rating: RatingValue) {
     const currentRating = ratings.find((item) => item.barId === bar.id)?.rating;
     if (currentRating === rating) {
@@ -362,7 +408,7 @@ export default function HomePage() {
         const lastError = fallbackError as GeolocationPositionError;
         const didTotalTimeout = isTimeoutError(firstError) && isTimeoutError(lastError);
         if (didTotalTimeout) {
-          setLocationError("Nao conseguimos sua localizacao no tempo limite total. Toque em Tentar novamente.");
+          setLocationError("Não conseguimos sua localização no tempo limite total. Toque em Tentar novamente.");
           setCanRetryLocation(true);
           return;
         }
@@ -381,11 +427,6 @@ export default function HomePage() {
       setIsDistanceFilterActive(true);
       setLocationError(null);
       setCanRetryLocation(false);
-      return;
-    }
-
-    if (!isLocating) {
-      handleRequestLocation();
     }
   }
 
@@ -442,7 +483,7 @@ export default function HomePage() {
 
     try {
       await navigator.clipboard.writeText(`${shareText}\n\n${url}`);
-      window.alert("Link copiado para a área de transferência.");
+      showCopyToast("Link copiado para a área de transferência.");
     } catch {
       window.prompt("Copie os detalhes e o link do card:", `${shareText}\n\n${url}`);
     }
@@ -525,7 +566,7 @@ export default function HomePage() {
       }
 
       await navigator.clipboard.writeText(`${shareText}\n\n${data.shareUrl}`);
-      window.alert("Link do roteiro copiado para a área de transferência.");
+      showCopyToast("Link do roteiro copiado para a área de transferência.");
       setIsCreatingRoute(false);
     } catch {
       setRouteError("Erro de rede ao criar roteiro. Tente de novo.");
@@ -640,6 +681,12 @@ export default function HomePage() {
                 </button>
               ))}
               </div>
+              {!userLocation ? (
+                <p className="sort-hint">
+                  Toque em <strong>Usar localização</strong> para filtrar por raio. O valor do chip será usado quando a
+                  localização estiver ativa.
+                </p>
+              ) : null}
             </div>
 
             <div className="search-field">
@@ -704,11 +751,11 @@ export default function HomePage() {
             {`Filtros: ${activeFilterLabels.join(" • ")}`}
           </p>
         )}
-        {activeTab === "lista" && (
+        {activeTab === "lista" && filteredBars.length > 0 ? (
           <p className="list-count">
             Mostrando {visibleBars.length} de {filteredBars.length} bares
           </p>
-        )}
+        ) : null}
 
       </header>
 
@@ -729,6 +776,16 @@ export default function HomePage() {
               isInRoute={selectedRouteBarIds.includes(bar.id)}
             />
           ))}
+
+        {activeTab === "lista" && filteredBars.length === 0 ? (
+          <div className="empty-box list-empty-filters">
+            <p>Nenhum bar com os filtros atuais.</p>
+            <p className="list-empty-hint">Ajuste a busca, as avaliações ou o raio, ou limpe tudo de uma vez.</p>
+            <button type="button" className="list-empty-clear-btn" onClick={handleClearAllListFilters}>
+              Limpar filtros
+            </button>
+          </div>
+        ) : null}
 
         {activeTab === "lista" && (
           <>
@@ -786,7 +843,10 @@ export default function HomePage() {
             </p>
             {lastSharedRoute ? (
               <div className="route-last-share">
-                <p className="route-last-share-label">Último link compartilhável</p>
+                <p className="route-last-share-label">Último link que você gerou</p>
+                <p className="route-last-share-immutable-note">
+                  Alterações no rascunho não mudam este URL. Gerou outro compartilhamento? Envie o novo link.
+                </p>
                 <p className="route-last-share-meta">
                   {lastSharedRoute.title ? `${lastSharedRoute.title} · ` : ""}
                   {new Date(lastSharedRoute.savedAt).toLocaleString("pt-BR")}
@@ -815,13 +875,28 @@ export default function HomePage() {
                   type="button"
                   className="route-builder-share"
                   disabled={
-                    isCreatingRoute || !routeTitle.trim() || selectedRouteBarIds.length === 0
+                    isCreatingRoute ||
+                    !routeTitle.trim() ||
+                    selectedRouteBarIds.length === 0 ||
+                    routeShareConfigured === false
                   }
                   onClick={handleShareRoute}
                 >
                   {isCreatingRoute ? "Gerando..." : "Compartilhar roteiro"}
                 </button>
               </div>
+              <p className="route-builder-immutable-hint">
+                Cada compartilhamento gera um <strong>link novo</strong>. Se você mudar bares, ordem ou título no
+                rascunho, isso <strong>não atualiza</strong> páginas já abertas com um link antigo — quem só tem o link
+                velho continua vendo aquela versão. Depois de alterar o roteiro, compartilhe de novo e{" "}
+                <strong>mande sempre o link mais recente</strong> para quem precisar da versão atual.
+              </p>
+              {routeShareConfigured === false ? (
+                <p className="route-builder-share-disabled-hint" role="status">
+                  Compartilhamento indisponível neste ambiente (serviço não configurado). Monte o roteiro localmente ou
+                  configure o Upstash no servidor.
+                </p>
+              ) : null}
               {routeError ? <p className="route-builder-error">{routeError}</p> : null}
             </section>
 
@@ -868,8 +943,8 @@ export default function HomePage() {
                         type="button"
                         className="rating-action-btn rating-action-btn-map"
                         onClick={() => handleShowRatedBarInMap(bar.id)}
-                        aria-label={`Ver ${bar.nome} no mapa`}
-                        title="Ver no mapa"
+                        aria-label={`Mostrar ${bar.nome} na carta interativa do app`}
+                        title="Carta interativa"
                       >
                         <AppIcon name="map" size={17} />
                       </button>
@@ -955,6 +1030,12 @@ export default function HomePage() {
           title={selectedImageBar.nome}
           onClose={() => setSelectedImageBar(null)}
         />
+      ) : null}
+
+      {copyToastMessage ? (
+        <div className="app-toast" role="status" aria-live="polite">
+          {copyToastMessage}
+        </div>
       ) : null}
     </main>
   );
