@@ -28,12 +28,22 @@ export default function HomePage() {
   const [visibleCount, setVisibleCount] = useState(LOAD_STEP);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isDistanceFilterActive, setIsDistanceFilterActive] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("q") ?? "";
+  });
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("q") ?? "";
+  });
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [selectedImageBar, setSelectedImageBar] = useState<Bar | null>(null);
   const [mapFocusBarId, setMapFocusBarId] = useState<string | undefined>(undefined);
+  const [routeTitle, setRouteTitle] = useState("Lista de Danilo's");
+  const [selectedRouteBarIds, setSelectedRouteBarIds] = useState<string[]>([]);
+  const [isCreatingRoute, setIsCreatingRoute] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const resetListFilters = useCallback(() => {
@@ -44,13 +54,9 @@ export default function HomePage() {
     setLocationError(null);
   }, []);
 
-  // Read ?q= from URL on mount, then clean it up
+  // Clean up ?q= after the state initializers consume it.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const q = params.get("q") ?? "";
-    if (q) {
-      setSearchQuery(q);
-      setDebouncedSearchQuery(q);
+    if (window.location.search.includes("q=")) {
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
     }
   }, []);
@@ -301,8 +307,11 @@ export default function HomePage() {
 
   async function handleShareBar(barId: string) {
     const bar = barsById[barId];
-    const detailsPath = bar ? `/bar/${bar.slug}?rec=1` : window.location.pathname;
-    const url = `${window.location.origin}${detailsPath}`;
+    // Strip /bar/... suffix to get the basePath (handles GitHub Pages subdirectory)
+    const basePath = window.location.pathname.split("/bar/")[0].replace(/\/$/, "");
+    const url = bar
+      ? `${window.location.origin}${basePath}/bar/${bar.slug}?rec=1`
+      : window.location.href;
     const details = bar
       ? `${bar.nome}\n${bar.petiscoDescricao}\n${bar.endereco}`
       : "Bar do Comida di Buteco BH";
@@ -326,6 +335,72 @@ export default function HomePage() {
       window.alert("Link copiado para a área de transferência.");
     } catch {
       window.prompt("Copie os detalhes e o link do card:", `${shareText}\n\n${url}`);
+    }
+  }
+
+  function handleToggleRouteBar(barId: string) {
+    setRouteError(null);
+    setSelectedRouteBarIds((current) => {
+      if (current.includes(barId)) {
+        return current.filter((id) => id !== barId);
+      }
+      return [...current, barId];
+    });
+  }
+
+  async function handleShareRoute() {
+    if (selectedRouteBarIds.length === 0) {
+      setRouteError("Escolha ao menos 1 bar para montar o roteiro.");
+      return;
+    }
+
+    setIsCreatingRoute(true);
+    setRouteError(null);
+
+    try {
+      const response = await fetch("/api/routes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          barIds: selectedRouteBarIds,
+          title: routeTitle.trim() || undefined
+        })
+      });
+
+      const data = (await response.json()) as { shareUrl?: string; error?: string };
+      if (!response.ok || !data.shareUrl) {
+        setRouteError(data.error || "Não foi possível criar o roteiro.");
+        setIsCreatingRoute(false);
+        return;
+      }
+
+      const shareText = `${routeTitle.trim() || "Meu roteiro de buteco"}\n${selectedRouteBarIds.length} bares selecionados`;
+
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: routeTitle.trim() || "Meu roteiro de buteco",
+            text: shareText,
+            url: data.shareUrl
+          });
+          setIsCreatingRoute(false);
+          return;
+        }
+      } catch (error) {
+        if ((error as Error).name === "AbortError") {
+          setIsCreatingRoute(false);
+          return;
+        }
+      }
+
+      await navigator.clipboard.writeText(`${shareText}\n\n${data.shareUrl}`);
+      window.alert("Link do roteiro copiado para a área de transferência.");
+      setIsCreatingRoute(false);
+    } catch {
+      setRouteError("Erro de rede ao criar roteiro. Tente de novo.");
+      setIsCreatingRoute(false);
     }
   }
 
@@ -446,6 +521,27 @@ export default function HomePage() {
             {`Filtros: ${activeFilterLabels.join(" • ")}`}
           </p>
         )}
+
+        {activeTab === "lista" && (
+          <section className="route-builder">
+            <p className="route-builder-label">Roteiro compartilhável (somente leitura)</p>
+            <input
+              type="text"
+              className="route-builder-input"
+              value={routeTitle}
+              onChange={(event) => setRouteTitle(event.target.value)}
+              placeholder="Ex.: Lista de Danilo's"
+              maxLength={80}
+            />
+            <div className="route-builder-row">
+              <span>{`${selectedRouteBarIds.length} bar(es) no roteiro`}</span>
+              <button type="button" className="route-builder-share" disabled={isCreatingRoute} onClick={handleShareRoute}>
+                {isCreatingRoute ? "Gerando..." : "Compartilhar roteiro"}
+              </button>
+            </div>
+            {routeError ? <p className="route-builder-error">{routeError}</p> : null}
+          </section>
+        )}
       </header>
 
       <section className="tab-content">
@@ -467,6 +563,8 @@ export default function HomePage() {
               onRate={handleRate}
               onOpenImage={setSelectedImageBar}
               onShare={handleShareBar}
+              onToggleRoute={handleToggleRouteBar}
+              isInRoute={selectedRouteBarIds.includes(bar.id)}
             />
           ))}
 
