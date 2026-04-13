@@ -39,6 +39,7 @@ export function ImageModal({ imageUrl, title, onClose }: ImageModalProps) {
           minScale={1}
           maxScale={4}
           centerOnInit
+          centerZoomedOut
           doubleClick={{ mode: "toggle" }}
         >
           <TransformComponent wrapperClass="modal-image-wrap">

@@ -26,6 +26,7 @@ export function MapTab({ bars, focusBarId, userLocation }: MapTabProps) {
     [bars]
   );
   const mapRef = useRef<MapRef | null>(null);
+  const [isMapReady, setIsMapReady] = useState(false);
   const [clickedBarId, setClickedBarId] = useState<string | null>(null);
   const selectedBarId = focusBarId ?? clickedBarId;
 
@@ -42,19 +43,20 @@ export function MapTab({ bars, focusBarId, userLocation }: MapTabProps) {
   }, [mappableBars, selectedBarId]);
 
   useEffect(() => {
-    if (!userLocation || !mapRef.current) return;
+    if (!isMapReady || !userLocation || !mapRef.current || selectedBarId) return;
     mapRef.current.flyTo({
       center: [userLocation.lng, userLocation.lat],
-      zoom: 12.8,
+      zoom: 14,
       essential: true
     });
-  }, [userLocation]);
+  }, [isMapReady, selectedBarId, userLocation]);
 
   return (
     <section className="map-tab">
       <Map
         ref={mapRef}
         initialViewState={BH_VIEW}
+        onLoad={() => setIsMapReady(true)}
         style={{ width: "100%", height: "100%" }}
         mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
         mapLib={maplibregl}

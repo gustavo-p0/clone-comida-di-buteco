@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppIcon } from "@/components/app-icon";
 import { BarCard } from "@/components/bar-card";
 import { ImageModal } from "@/components/image-modal";
@@ -13,17 +13,25 @@ import { Bar, RatingValue, StoredRating } from "@/types/bar";
 
 type TabId = "lista" | "mapa" | "avaliacoes";
 type RatingFilter = "all" | "like" | "dislike" | "unrated";
+type RadiusOption = 1 | 3 | 5 | 10 | "all";
 
 const LOAD_STEP = 12;
-const RADIUS_OPTIONS = [1, 3, 5, 10] as const;
+const RADIUS_OPTIONS: RadiusOption[] = [1, 3, 5, 10, "all"];
+
+function getInitialAnchorFromHash() {
+  if (typeof window === "undefined") return null;
+  const hash = window.location.hash.replace("#", "");
+  return hash.startsWith("bar-card-") ? hash : null;
+}
 
 export default function HomePage() {
+  const initialAnchorId = getInitialAnchorFromHash();
   const bars = useMemo(() => getBars(), []);
   const [activeTab, setActiveTab] = useState<TabId>("lista");
   const [ratings, setRatings] = useState<StoredRating[]>(() => readRatings());
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
-  const [radiusKm, setRadiusKm] = useState<(typeof RADIUS_OPTIONS)[number]>(5);
-  const [visibleCount, setVisibleCount] = useState(LOAD_STEP);
+  const [radiusKm, setRadiusKm] = useState<RadiusOption>(5);
+  const [visibleCount, setVisibleCount] = useState(initialAnchorId ? bars.length : LOAD_STEP);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isDistanceFilterActive, setIsDistanceFilterActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -32,7 +40,20 @@ export default function HomePage() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [selectedImageBar, setSelectedImageBar] = useState<Bar | null>(null);
   const [mapFocusBarId, setMapFocusBarId] = useState<string | undefined>(undefined);
+  const pendingAnchorIdRef = useRef<string | null>(initialAnchorId);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const applyAnchorNavigation = useCallback((anchorId: string) => {
+    pendingAnchorIdRef.current = anchorId;
+    setActiveTab("lista");
+    setSearchQuery("");
+    setDebouncedSearchQuery("");
+    setRatingFilter("all");
+    setIsDistanceFilterActive(false);
+    setLocationError(null);
+    setMapFocusBarId(undefined);
+    setVisibleCount(bars.length);
+  }, [bars.length]);
 
   useEffect(() => {
     if (activeTab !== "lista" || !sentinelRef.current) {
@@ -58,6 +79,27 @@ export default function HomePage() {
 
     return () => window.clearTimeout(timeoutId);
   }, [searchQuery]);
+
+  useEffect(() => {
+    function handleHashChange() {
+      const hash = window.location.hash.replace("#", "");
+      if (!hash.startsWith("bar-card-")) return;
+      applyAnchorNavigation(hash);
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [applyAnchorNavigation]);
+
+  useEffect(() => {
+    const pendingAnchorId = pendingAnchorIdRef.current;
+    if (!pendingAnchorId || activeTab !== "lista") return;
+    const target = document.getElementById(pendingAnchorId);
+    if (!target) return;
+
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    pendingAnchorIdRef.current = null;
+  }, [activeTab, visibleCount]);
 
   const barsWithDistance = useMemo(() => {
     if (!userLocation) {
@@ -87,7 +129,9 @@ export default function HomePage() {
     const normalizedQuery = debouncedSearchQuery.trim().toLowerCase();
     const rows = barsWithDistance.filter((row) => {
       const isInsideRadius =
-        isDistanceFilterActive && userLocation ? row.distanceKm !== null && row.distanceKm <= radiusKm : true;
+        isDistanceFilterActive && userLocation
+          ? radiusKm === "all" || (row.distanceKm !== null && row.distanceKm <= radiusKm)
+          : true;
       if (!isInsideRadius) return false;
 
       const currentRating = ratingByBarId[row.bar.id];
@@ -119,7 +163,7 @@ export default function HomePage() {
     }
 
     if (isDistanceFilterActive && userLocation) {
-      labels.push(`Raio: ${radiusKm}km`);
+      labels.push(radiusKm === "all" ? "Raio: sem limite" : `Raio: ${radiusKm}km`);
     }
 
     if (ratingFilter === "like") labels.push("Avaliação: Likes");
@@ -155,7 +199,26 @@ export default function HomePage() {
     saveRatings(next);
   }
 
-  function handleRequestLocation() {
+  function requestCurrentPosition(options: PositionOptions): Promise<GeolocationPosition> {
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    });
+  }
+
+  function getLocationErrorMessage(error: GeolocationPositionError) {
+    if (error.code === error.PERMISSION_DENIED) {
+      return "Permissão negada. No iPhone: Ajustes > Safari > Localização > Permitir.";
+    }
+    if (error.code === error.POSITION_UNAVAILABLE) {
+      return "Localização indisponível no momento. Tente novamente em área aberta.";
+    }
+    if (error.code === error.TIMEOUT) {
+      return "Localização demorou para responder. Tente novamente.";
+    }
+    return "Não foi possível obter sua localização.";
+  }
+
+  async function handleRequestLocation() {
     if (isDistanceFilterActive) {
       setIsDistanceFilterActive(false);
       setLocationError(null);
@@ -174,25 +237,50 @@ export default function HomePage() {
       setLocationError("Seu navegador não suporta geolocalização.");
       return;
     }
+
+    if (!window.isSecureContext) {
+      setLocationError("Geolocalização exige HTTPS (ou localhost).");
+      return;
+    }
+
     setIsLocating(true);
     setLocationError(null);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+
+    try {
+      const precisePosition = await requestCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 0
+      });
+
+      setUserLocation({ lat: precisePosition.coords.latitude, lng: precisePosition.coords.longitude });
+      setIsDistanceFilterActive(true);
+      setVisibleCount(LOAD_STEP);
+      setIsLocating(false);
+      return;
+    } catch (error) {
+      try {
+        const fallbackPosition = await requestCurrentPosition({
+          enableHighAccuracy: false,
+          timeout: 20000,
+          maximumAge: 300000
+        });
+
+        setUserLocation({ lat: fallbackPosition.coords.latitude, lng: fallbackPosition.coords.longitude });
         setIsDistanceFilterActive(true);
         setVisibleCount(LOAD_STEP);
         setIsLocating(false);
-      },
-      () => {
+        return;
+      } catch (fallbackError) {
         setIsDistanceFilterActive(false);
         setIsLocating(false);
-        setLocationError("Não foi possível obter sua localização.");
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+        setLocationError(getLocationErrorMessage(fallbackError as GeolocationPositionError));
+        return;
+      }
+    }
   }
 
-  function handleRadiusChange(option: (typeof RADIUS_OPTIONS)[number]) {
+  function handleRadiusChange(option: RadiusOption) {
     setRadiusKm(option);
     setVisibleCount(LOAD_STEP);
     if (userLocation) {
@@ -209,6 +297,31 @@ export default function HomePage() {
   function handleShowRatedBarInMap(barId: string) {
     setMapFocusBarId(barId);
     setActiveTab("mapa");
+  }
+
+  async function handleShareBarAnchor(barId: string) {
+    const anchorId = `bar-card-${barId}`;
+    const url = `${window.location.origin}${window.location.pathname}#${anchorId}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Comida di Buteco BH",
+          text: "Olha esse bar no app do Comida di Buteco:",
+          url
+        });
+        return;
+      }
+    } catch (error) {
+      if ((error as Error).name === "AbortError") return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      window.alert("Link copiado para a área de transferência.");
+    } catch {
+      window.prompt("Copie o link do card:", url);
+    }
   }
 
   function handleTabChange(tab: TabId) {
@@ -269,7 +382,7 @@ export default function HomePage() {
               className={`radius-chip ${radiusKm === option ? "chip-active" : ""}`}
               onClick={() => handleRadiusChange(option)}
             >
-              {option}km
+              {option === "all" ? "Sem limite" : `${option}km`}
             </button>
           ))}
         </div>
@@ -297,7 +410,9 @@ export default function HomePage() {
           {locationError
             ? locationError
             : isDistanceFilterActive && userLocation
-              ? `${filteredBars.length} bares dentro de ${radiusKm}km de você`
+              ? radiusKm === "all"
+                ? `${filteredBars.length} bares sem limite de raio`
+                : `${filteredBars.length} bares dentro de ${radiusKm}km de você`
               : `${filteredBars.length} bares encontrados`}
         </p>
         <p className={`filters-state ${activeFilterLabels.length ? "filters-state-active" : ""}`}>
@@ -306,6 +421,12 @@ export default function HomePage() {
       </header>
 
       <section className="tab-content">
+        {activeTab === "lista" && (
+          <p className="list-count">
+            Mostrando {visibleBars.length} de {filteredBars.length} bares
+          </p>
+        )}
+
         {activeTab === "lista" &&
           visibleBars.map(({ bar, distanceKm }) => (
             <BarCard
@@ -334,7 +455,9 @@ export default function HomePage() {
             userLocation={userLocation}
           />
         )}
-        {activeTab === "avaliacoes" && <RatingsTab ratings={ratings} onShowInMap={handleShowRatedBarInMap} />}
+        {activeTab === "avaliacoes" && (
+          <RatingsTab ratings={ratings} onShowInMap={handleShowRatedBarInMap} onShare={handleShareBarAnchor} />
+        )}
       </section>
 
       <nav className="bottom-nav">

@@ -26,7 +26,7 @@ export function BarCard({
   const hasUserLocation = typeof userLat === "number" && typeof userLng === "number";
 
   return (
-    <article className="bar-card">
+    <article id={`bar-card-${bar.id}`} className="bar-card">
       <button className="bar-image-button" onClick={() => onOpenImage(bar)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={bar.imagemUrl} alt={bar.nome} className="bar-image" loading="lazy" />
