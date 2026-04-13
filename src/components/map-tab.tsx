@@ -1,8 +1,10 @@
 "use client";
 
-import Map, { MapRef, Marker, NavigationControl, Popup, ViewState } from "react-map-gl/maplibre";
+import Map, { MapRef, Marker, NavigationControl, ViewState } from "react-map-gl/maplibre";
 import maplibregl from "maplibre-gl";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AppIcon } from "@/components/app-icon";
 import { Bar } from "@/types/bar";
 
 type MapTabProps = {
@@ -45,21 +47,19 @@ export function MapTab({
   );
   const mapRef = useRef<MapRef | null>(null);
   const [isMapReady, setIsMapReady] = useState(false);
-  const [clickedBarId, setClickedBarId] = useState<string | null>(null);
-  const selectedBarId = focusBarId ?? clickedBarId;
+  // MapTab unmounts on tab switch, so lazy initializer picks up focusBarId on each mount
+  const [selectedBarId, setSelectedBarId] = useState<string | null>(() => focusBarId ?? null);
+  const selectedBar = selectedBarId ? (mappableBars.find((b) => b.id === selectedBarId) ?? null) : null;
 
+  // Fly to selected bar
   useEffect(() => {
     if (!selectedBarId || !mapRef.current) return;
-    const selectedBar = mappableBars.find((bar) => bar.id === selectedBarId);
-    if (!selectedBar || selectedBar.latitude === null || selectedBar.longitude === null) return;
-
-    mapRef.current.flyTo({
-      center: [selectedBar.longitude, selectedBar.latitude],
-      zoom: 14.5,
-      essential: true
-    });
+    const bar = mappableBars.find((b) => b.id === selectedBarId);
+    if (!bar || bar.latitude === null || bar.longitude === null) return;
+    mapRef.current.flyTo({ center: [bar.longitude as number, bar.latitude as number], zoom: 14.5, essential: true });
   }, [mappableBars, selectedBarId]);
 
+  // Fly to user location when available
   useEffect(() => {
     if (!isMapReady || !userLocation || !mapRef.current || selectedBarId) return;
     mapRef.current.flyTo({
@@ -88,61 +88,55 @@ export function MapTab({
         {mappableBars.map((bar) => (
           <Marker key={bar.id} latitude={bar.latitude as number} longitude={bar.longitude as number}>
             <button
-              className="map-marker"
-              onClick={() => setClickedBarId(bar.id)}
+              className={`map-marker ${selectedBarId === bar.id ? "map-marker-active" : ""}`}
+              onClick={() => setSelectedBarId(bar.id)}
               aria-label={`Abrir ${bar.nome}`}
             />
           </Marker>
         ))}
-        {selectedBarId ? (
-          <MapPopup
-            bars={mappableBars}
-            selectedBarId={selectedBarId}
-            onClose={() => setClickedBarId(null)}
-            onShowInList={onShowInList}
-          />
-        ) : null}
       </Map>
+
+      {selectedBar ? (
+        <div className="map-bar-card">
+          <button
+            className="map-bar-card-close"
+            onClick={() => setSelectedBarId(null)}
+            aria-label="Fechar"
+          >
+            ×
+          </button>
+          <div className="map-bar-card-inner">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={selectedBar.imagemUrl} alt={selectedBar.nome} className="map-bar-card-img" />
+            <div className="map-bar-card-body">
+              <strong className="map-bar-card-name">{selectedBar.nome}</strong>
+              <p className="map-bar-card-dish">{selectedBar.petiscoDescricao}</p>
+              <div className="map-bar-card-actions">
+                <button
+                  type="button"
+                  onClick={() => onShowInList(selectedBar.id)}
+                  className="map-bar-btn"
+                >
+                  <AppIcon name="list" size={13} />
+                  Ver na lista
+                </button>
+                <Link href={`/bar/${selectedBar.slug}`} className="map-bar-btn">
+                  Ver detalhes
+                </Link>
+                <a
+                  href={selectedBar.mapsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="map-bar-btn map-bar-btn-maps"
+                >
+                  <AppIcon name="map" size={13} />
+                  Google Maps
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
-  );
-}
-
-function MapPopup({
-  bars,
-  selectedBarId,
-  onClose,
-  onShowInList
-}: {
-  bars: Bar[];
-  selectedBarId: string;
-  onClose: () => void;
-  onShowInList: (barId: string) => void;
-}) {
-  const selectedBar = bars.find((bar) => bar.id === selectedBarId);
-  if (!selectedBar || selectedBar.latitude === null || selectedBar.longitude === null) {
-    return null;
-  }
-
-  return (
-    <Popup
-      anchor="bottom"
-      latitude={selectedBar.latitude}
-      longitude={selectedBar.longitude}
-      onClose={onClose}
-      closeButton
-      closeOnClick={false}
-      maxWidth="240px"
-    >
-      <strong>{selectedBar.nome}</strong>
-      <p>{selectedBar.endereco}</p>
-      <div className="map-popup-actions">
-        <button type="button" onClick={() => onShowInList(selectedBar.id)}>
-          Ver na lista
-        </button>
-        <a href={selectedBar.mapsUrl} target="_blank" rel="noreferrer">
-          Abrir no Google Maps
-        </a>
-      </div>
-    </Popup>
   );
 }
