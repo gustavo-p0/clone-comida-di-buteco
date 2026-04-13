@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { AppIcon } from "@/components/app-icon";
 import { ImageModal } from "@/components/image-modal";
 import { readRatings, saveRatings } from "@/lib/rating-storage";
 import { Bar, RatingValue, StoredRating } from "@/types/bar";
@@ -19,6 +20,13 @@ export function BarDetailsClient({ bar }: BarDetailsClientProps) {
   );
 
   function rate(rating: RatingValue) {
+    if (currentRating === rating) {
+      const cleared = ratings.filter((item) => item.barId !== bar.id);
+      setRatings(cleared);
+      saveRatings(cleared);
+      return;
+    }
+
     const next = [
       ...ratings.filter((item) => item.barId !== bar.id),
       {
@@ -80,13 +88,16 @@ export function BarDetailsClient({ bar }: BarDetailsClientProps) {
 
       <footer className="details-actions">
         <button className={currentRating === "like" ? "active-like" : ""} onClick={() => rate("like")}>
-          Like
+          <AppIcon name="favorite" size={16} />
+          <span>Like</span>
         </button>
         <button className={currentRating === "dislike" ? "active-dislike" : ""} onClick={() => rate("dislike")}>
-          Dislike
+          <AppIcon name="thumb-down" size={16} />
+          <span>Dislike</span>
         </button>
         <a href={bar.mapsUrl} target="_blank" rel="noreferrer">
-          Ver no Maps
+          <AppIcon name="map" size={16} />
+          <span>Ver no Maps</span>
         </a>
       </footer>
 

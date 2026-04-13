@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AppIcon } from "@/components/app-icon";
 import { BarCard } from "@/components/bar-card";
 import { ImageModal } from "@/components/image-modal";
 import { MapTab } from "@/components/map-tab";
@@ -11,6 +12,7 @@ import { readRatings, saveRatings } from "@/lib/rating-storage";
 import { Bar, RatingValue, StoredRating } from "@/types/bar";
 
 type TabId = "lista" | "mapa" | "avaliacoes";
+type RatingFilter = "all" | "like" | "dislike" | "unrated";
 
 const LOAD_STEP = 12;
 const RADIUS_OPTIONS = [1, 3, 5, 10] as const;
@@ -19,9 +21,15 @@ export default function HomePage() {
   const bars = useMemo(() => getBars(), []);
   const [activeTab, setActiveTab] = useState<TabId>("lista");
   const [ratings, setRatings] = useState<StoredRating[]>(() => readRatings());
+  const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
   const [radiusKm, setRadiusKm] = useState<(typeof RADIUS_OPTIONS)[number]>(5);
   const [visibleCount, setVisibleCount] = useState(LOAD_STEP);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [isDistanceFilterActive, setIsDistanceFilterActive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [selectedImageBar, setSelectedImageBar] = useState<Bar | null>(null);
   const [mapFocusBarId, setMapFocusBarId] = useState<string | undefined>(undefined);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -43,6 +51,14 @@ export default function HomePage() {
     return () => observer.disconnect();
   }, [activeTab]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchQuery]);
+
   const barsWithDistance = useMemo(() => {
     if (!userLocation) {
       return bars.map((bar) => ({ bar, distanceKm: null as number | null }));
@@ -60,20 +76,68 @@ export default function HomePage() {
     });
   }, [bars, userLocation]);
 
+  const ratingByBarId = useMemo(() => {
+    return ratings.reduce<Record<string, RatingValue>>((accumulator, item) => {
+      accumulator[item.barId] = item.rating;
+      return accumulator;
+    }, {});
+  }, [ratings]);
+
   const filteredBars = useMemo(() => {
-    const rows = barsWithDistance.filter((row) =>
-      userLocation ? row.distanceKm === null || row.distanceKm <= radiusKm : true
-    );
+    const normalizedQuery = debouncedSearchQuery.trim().toLowerCase();
+    const rows = barsWithDistance.filter((row) => {
+      const isInsideRadius =
+        isDistanceFilterActive && userLocation ? row.distanceKm !== null && row.distanceKm <= radiusKm : true;
+      if (!isInsideRadius) return false;
+
+      const currentRating = ratingByBarId[row.bar.id];
+      if (ratingFilter === "unrated" && currentRating) return false;
+      if (ratingFilter === "like" && currentRating !== "like") return false;
+      if (ratingFilter === "dislike" && currentRating !== "dislike") return false;
+
+      if (!normalizedQuery) return true;
+
+      const haystack = `${row.bar.nome} ${row.bar.petiscoDescricao} ${row.bar.endereco}`.toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+
     return rows.sort((a, b) => {
       if (a.distanceKm === null) return 1;
       if (b.distanceKm === null) return -1;
       return a.distanceKm - b.distanceKm;
     });
-  }, [barsWithDistance, radiusKm, userLocation]);
+  }, [barsWithDistance, debouncedSearchQuery, isDistanceFilterActive, radiusKm, ratingByBarId, ratingFilter, userLocation]);
 
   const visibleBars = useMemo(() => filteredBars.slice(0, visibleCount), [filteredBars, visibleCount]);
+  const barsForMap = useMemo(() => filteredBars.map((item) => item.bar), [filteredBars]);
+  const activeFilterLabels = useMemo(() => {
+    const labels: string[] = [];
+
+    const normalizedSearch = debouncedSearchQuery.trim();
+    if (normalizedSearch) {
+      labels.push(`Busca: "${normalizedSearch}"`);
+    }
+
+    if (isDistanceFilterActive && userLocation) {
+      labels.push(`Raio: ${radiusKm}km`);
+    }
+
+    if (ratingFilter === "like") labels.push("Avaliação: Likes");
+    if (ratingFilter === "dislike") labels.push("Avaliação: Dislikes");
+    if (ratingFilter === "unrated") labels.push("Avaliação: Não avaliados");
+
+    return labels;
+  }, [debouncedSearchQuery, isDistanceFilterActive, radiusKm, ratingFilter, userLocation]);
 
   function handleRate(bar: Bar, rating: RatingValue) {
+    const currentRating = ratings.find((item) => item.barId === bar.id)?.rating;
+    if (currentRating === rating) {
+      const cleared = ratings.filter((item) => item.barId !== bar.id);
+      setRatings(cleared);
+      saveRatings(cleared);
+      return;
+    }
+
     const next = [
       ...ratings.filter((item) => item.barId !== bar.id),
       {
@@ -92,10 +156,54 @@ export default function HomePage() {
   }
 
   function handleRequestLocation() {
-    if (!("geolocation" in navigator)) return;
-    navigator.geolocation.getCurrentPosition((position) => {
-      setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-    });
+    if (isDistanceFilterActive) {
+      setIsDistanceFilterActive(false);
+      setLocationError(null);
+      setVisibleCount(LOAD_STEP);
+      return;
+    }
+
+    if (userLocation) {
+      setIsDistanceFilterActive(true);
+      setLocationError(null);
+      setVisibleCount(LOAD_STEP);
+      return;
+    }
+
+    if (!("geolocation" in navigator)) {
+      setLocationError("Seu navegador não suporta geolocalização.");
+      return;
+    }
+    setIsLocating(true);
+    setLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setIsDistanceFilterActive(true);
+        setVisibleCount(LOAD_STEP);
+        setIsLocating(false);
+      },
+      () => {
+        setIsDistanceFilterActive(false);
+        setIsLocating(false);
+        setLocationError("Não foi possível obter sua localização.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  function handleRadiusChange(option: (typeof RADIUS_OPTIONS)[number]) {
+    setRadiusKm(option);
+    setVisibleCount(LOAD_STEP);
+    if (userLocation) {
+      setIsDistanceFilterActive(true);
+      setLocationError(null);
+      return;
+    }
+
+    if (!isLocating) {
+      handleRequestLocation();
+    }
   }
 
   function handleShowRatedBarInMap(barId: string) {
@@ -103,21 +211,98 @@ export default function HomePage() {
     setActiveTab("mapa");
   }
 
+  function handleTabChange(tab: TabId) {
+    setActiveTab(tab);
+    if (tab === "lista") {
+      setVisibleCount(LOAD_STEP);
+    }
+  }
+
+  function handleSearchChange(value: string) {
+    setSearchQuery(value);
+    setVisibleCount(LOAD_STEP);
+  }
+
+  function handleRatingFilterChange(filter: RatingFilter) {
+    setRatingFilter(filter);
+    setVisibleCount(LOAD_STEP);
+  }
+
+  function handleClearSearch() {
+    setSearchQuery("");
+    setDebouncedSearchQuery("");
+    setVisibleCount(LOAD_STEP);
+  }
+
   return (
     <main className="app-root">
       <header className="top-header">
-        <button onClick={handleRequestLocation}>Perto de mim</button>
+        <div className="search-field">
+          <input
+            type="search"
+            className="search-input"
+            placeholder="Buscar bar, prato ou endereço"
+            value={searchQuery}
+            onChange={(event) => handleSearchChange(event.target.value)}
+            aria-label="Buscar bares"
+          />
+          {searchQuery ? (
+            <button type="button" className="search-clear-button" onClick={handleClearSearch} aria-label="Limpar busca">
+              x
+            </button>
+          ) : null}
+        </div>
+        <button onClick={handleRequestLocation} disabled={isLocating} className="location-cta">
+          <AppIcon name="my-location" size={16} />
+          <span>{isLocating ? "Localizando..." : isDistanceFilterActive ? "Limpar proximidade" : "Perto de mim"}</span>
+        </button>
+        <div className="radius-header" aria-hidden="true">
+          <span>
+            <AppIcon name="tune" size={15} /> Ordenar por distância
+          </span>
+          <AppIcon name="chevron-down" size={16} />
+        </div>
         <div className="chip-row">
           {RADIUS_OPTIONS.map((option) => (
             <button
               key={option}
-              className={radiusKm === option ? "chip-active" : ""}
-              onClick={() => setRadiusKm(option)}
+              className={`radius-chip ${radiusKm === option ? "chip-active" : ""}`}
+              onClick={() => handleRadiusChange(option)}
             >
               {option}km
             </button>
           ))}
         </div>
+        <div className="chip-row">
+          <button className={ratingFilter === "all" ? "chip-active" : ""} onClick={() => handleRatingFilterChange("all")}>
+            Todos
+          </button>
+          <button className={ratingFilter === "like" ? "chip-active" : ""} onClick={() => handleRatingFilterChange("like")}>
+            Likes
+          </button>
+          <button
+            className={ratingFilter === "dislike" ? "chip-active" : ""}
+            onClick={() => handleRatingFilterChange("dislike")}
+          >
+            Dislikes
+          </button>
+          <button
+            className={ratingFilter === "unrated" ? "chip-active" : ""}
+            onClick={() => handleRatingFilterChange("unrated")}
+          >
+            Não avaliados
+          </button>
+        </div>
+        <p className="filters-feedback">
+          {locationError
+            ? locationError
+            : isDistanceFilterActive && userLocation
+              ? `${filteredBars.length} bares dentro de ${radiusKm}km de você`
+              : `${filteredBars.length} bares encontrados`}
+        </p>
+        <p className={`filters-state ${activeFilterLabels.length ? "filters-state-active" : ""}`}>
+          {activeFilterLabels.length ? `Filtros ativos: ${activeFilterLabels.join(" • ")}` : "Sem filtros ativos"}
+        </p>
       </header>
 
       <section className="tab-content">
@@ -129,7 +314,7 @@ export default function HomePage() {
               userLat={userLocation?.lat ?? null}
               userLng={userLocation?.lng ?? null}
               distanceKm={distanceKm}
-              currentRating={ratings.find((item) => item.barId === bar.id)?.rating}
+              currentRating={ratingByBarId[bar.id]}
               onRate={handleRate}
               onOpenImage={setSelectedImageBar}
             />
@@ -142,22 +327,31 @@ export default function HomePage() {
           </>
         )}
 
-        {activeTab === "mapa" && <MapTab bars={bars} focusBarId={mapFocusBarId} />}
+        {activeTab === "mapa" && (
+          <MapTab
+            bars={isDistanceFilterActive && userLocation ? barsForMap : bars}
+            focusBarId={mapFocusBarId}
+            userLocation={userLocation}
+          />
+        )}
         {activeTab === "avaliacoes" && <RatingsTab ratings={ratings} onShowInMap={handleShowRatedBarInMap} />}
       </section>
 
       <nav className="bottom-nav">
-        <button className={activeTab === "lista" ? "tab-active" : ""} onClick={() => setActiveTab("lista")}>
-          Lista
+        <button className={activeTab === "lista" ? "tab-active" : ""} onClick={() => handleTabChange("lista")}>
+          <AppIcon name="list" size={18} />
+          <span>Lista</span>
         </button>
-        <button className={activeTab === "mapa" ? "tab-active" : ""} onClick={() => setActiveTab("mapa")}>
-          Mapa
+        <button className={activeTab === "mapa" ? "tab-active" : ""} onClick={() => handleTabChange("mapa")}>
+          <AppIcon name="map" size={18} />
+          <span>Mapa</span>
         </button>
         <button
           className={activeTab === "avaliacoes" ? "tab-active" : ""}
-          onClick={() => setActiveTab("avaliacoes")}
+          onClick={() => handleTabChange("avaliacoes")}
         >
-          Avaliações
+          <AppIcon name="star" size={18} />
+          <span>Avaliações</span>
         </button>
       </nav>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AppIcon } from "@/components/app-icon";
 import { Bar, RatingValue } from "@/types/bar";
 
 type BarCardProps = {
@@ -15,11 +16,15 @@ type BarCardProps = {
 
 export function BarCard({
   bar,
+  userLat,
+  userLng,
   distanceKm,
   currentRating,
   onRate,
   onOpenImage
 }: BarCardProps) {
+  const hasUserLocation = typeof userLat === "number" && typeof userLng === "number";
+
   return (
     <article className="bar-card">
       <button className="bar-image-button" onClick={() => onOpenImage(bar)}>
@@ -34,23 +39,32 @@ export function BarCard({
       </Link>
 
       <p className="meta-line">{bar.endereco}</p>
-      {typeof distanceKm === "number" && <p className="meta-line">{distanceKm.toFixed(1)} km</p>}
+      {hasUserLocation && (
+        <p className="meta-line">
+          {typeof distanceKm === "number" ? `${distanceKm.toFixed(1)} km de você` : "Distância indisponível"}
+        </p>
+      )}
 
       <div className="card-actions">
         <button
           className={currentRating === "like" ? "active-like" : ""}
           onClick={() => onRate(bar, "like")}
+          aria-label="Curtir"
         >
-          Like
+          <AppIcon name="favorite" size={16} />
+          <span>Like</span>
         </button>
         <button
           className={currentRating === "dislike" ? "active-dislike" : ""}
           onClick={() => onRate(bar, "dislike")}
+          aria-label="Não curtir"
         >
-          Dislike
+          <AppIcon name="thumb-down" size={16} />
+          <span>Dislike</span>
         </button>
         <a href={bar.mapsUrl} target="_blank" rel="noreferrer">
-          Maps
+          <AppIcon name="map" size={16} />
+          <span>Google Maps</span>
         </a>
       </div>
     </article>
